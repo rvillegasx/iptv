@@ -187,20 +187,59 @@ curl -X POST http://localhost:3000/api/upload-screenshot \
 
 ## 6. Despliegue en Dokploy
 
-El repositorio está listo para ser desplegado directamente en tu VPS con Dokploy:
+Sigue estos pasos detallados para realizar el despliegue en tu VPS administrado por Dokploy.
 
-1.  Crea un nuevo servicio de tipo **Application** en Dokploy.
-2.  Conecta tu repositorio de GitHub.
-3.  Establece el método de construcción a **Dockerfile** (el sistema leerá el `Dockerfile` del directorio raíz automáticamente).
-4.  Agrega las **Variables de Entorno** del backend en Dokploy:
-    *   `NODE_ENV`: `production`
-    *   `PORT`: `3000` (o el puerto interno que use Dokploy)
-    *   `API_KEY`: Clave para que tu app Flutter autentique sus llamados.
-    *   `DB_HOST`: IP/Host de tu MySQL en Dokploy.
-    *   `DB_USER`: Nombre del usuario de la base de datos MySQL.
-    *   `DB_PASSWORD`: Contraseña del usuario MySQL.
-    *   `DB_NAME`: Nombre de la base de datos.
-    *   `DB_PORT`: Puerto (generalmente `3306`).
-    *   `GEMINI_API_KEY`: Tu clave de Google AI Studio.
-5.  Despliega la aplicación. ¡Listo!
+### A. Configuración previa de la Base de Datos (MySQL)
+Antes de desplegar el backend, debes crear la base de datos y el usuario en tu servidor MySQL. Ejecuta las siguientes sentencias SQL en tu gestor de base de datos de producción:
+
+```sql
+-- 1. Crear la base de datos con codificación moderna
+CREATE DATABASE IF NOT EXISTS `iptv` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- 2. Crear el usuario (reemplaza 'tu_contraseña_segura' por una real)
+-- El '%' permite conexiones externas provenientes de la red interna de Dokploy
+CREATE USER 'iptvUser'@'%' IDENTIFIED BY 'tu_contraseña_segura';
+
+-- 3. Otorgar permisos para DDL (crear tablas) y DML (lectura/escritura)
+GRANT ALL PRIVILEGES ON `iptv`.* TO 'iptvUser'@'%';
+
+-- 4. Recargar privilegios
+FLUSH PRIVILEGES;
+```
+
+### B. Configuración del Subdominio (DNS)
+Para exponer el backend a internet bajo una URL limpia como `iptv.appsmx.tech`:
+1. Ve al panel de tu proveedor de DNS (ej: Cloudflare).
+2. Crea un registro de tipo **`A`**:
+   * **Nombre/Host:** `iptv`
+   * **Destino/IP:** La dirección IP pública de tu VPS de Dokploy (la misma de `alpha.appsmx.tech`).
+
+### C. Creación del Servicio en Dokploy
+1. Ve al panel de Dokploy y crea una nueva **Application** (Aplicación).
+2. Conecta tu repositorio de GitHub `rvillegasx/iptv`.
+3. Selecciona la rama principal (ej: `main`).
+4. Establece el método de construcción a **Dockerfile** (Dokploy detectará el `Dockerfile` en el directorio raíz).
+5. En la pestaña de **Environment Variables** (Variables de Entorno), agrega:
+   * `NODE_ENV`: `production`
+   * `PORT`: `3000`
+   * `API_KEY`: Tu clave secreta compartida con Flutter (para validar en `X-API-Key`).
+   * `DB_HOST`: Host/IP de tu base de datos MySQL (producción).
+   * `DB_USER`: `iptvUser`
+   * `DB_PASSWORD`: `tu_contraseña_segura`
+   * `DB_NAME`: `iptv`
+   * `DB_PORT`: `3306`
+   * `GEMINI_API_KEY`: Clave de API creada en Google AI Studio.
+
+### D. Configuración del Dominio y SSL en Dokploy
+1. En la aplicación de IPTV en Dokploy, ve a la pestaña **Domains** (Dominios).
+2. Haz clic en **Add Domain** (Agregar Dominio).
+3. Introduce los siguientes valores:
+   * **Host:** `iptv.appsmx.tech`
+   * **Path:** `/`
+   * **Port:** `3000` (puerto expuesto por el contenedor Docker).
+4. Asegúrate de marcar la casilla para habilitar **SSL/HTTPS** (para que Dokploy autogenere el certificado Let's Encrypt).
+5. Guarda los cambios y haz clic en **Deploy** (Desplegar).
+
+Tu API estará lista y accesible en: `https://iptv.appsmx.tech/api`
+
 
