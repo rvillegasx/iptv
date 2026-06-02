@@ -242,4 +242,31 @@ Para exponer el backend a internet bajo una URL limpia como `iptv.appsmx.tech`:
 
 Tu API estará lista y accesible en: `https://iptv.appsmx.tech/api`
 
+---
+
+## 7. Monitoreo de Salud con Uptime Kuma
+
+El servidor incluye un endpoint público de monitoreo de salud (`/health`) para integrarse de forma sencilla con herramientas como **Uptime Kuma**.
+
+### Detalles del Endpoint:
+*   **URL:** `https://iptv.appsmx.tech/health`
+*   **Método:** `GET`
+*   **Autenticación:** **Ninguna**. Este endpoint es público y está fuera de las rutas protegidas `/api`, por lo que **no** requiere la cabecera `X-API-Key`.
+*   **Respuesta Exitosa (HTTP 200):**
+    ```json
+    {
+      "status": "OK",
+      "timestamp": "2026-06-02T19:48:11.737Z"
+    }
+    ```
+
+### Configuración en Uptime Kuma:
+1.  En tu panel de Uptime Kuma, haz clic en **Add New Monitor** (Añadir Nuevo Monitor).
+2.  Configura los siguientes valores:
+    *   **Monitor Type:** `HTTP(s)`
+    *   **Friendly Name:** `IPTV Backend`
+    *   **URL:** `https://iptv.appsmx.tech/health`
+    *   **Heartbeat Interval:** `60` (segundos entre chequeos).
+    *   **Accepted Status Codes:** `200` (el servidor devuelve 200 OK cuando está en línea y conectado a la base de datos).
+3.  Haz clic en **Save** (Guardar).
 
