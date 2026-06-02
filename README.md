@@ -183,6 +183,13 @@ curl -X POST http://localhost:3000/api/upload-screenshot \
   -F "screenshots=@/Users/rvillegas/development/iptv/docs/Screenshot 2026-06-02 at 12.28.47 p.m..png"
 ```
 
+### C. Probar leer usuarios
+
+```bash
+curl -X GET https://iptv.appsmx.tech/api/users \
+  -H "X-API-Key: dev-api-key-12345" 
+```
+
 ---
 
 ## 6. Despliegue en Dokploy
