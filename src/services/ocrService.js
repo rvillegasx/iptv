@@ -105,7 +105,23 @@ export async function parseIPTVImage(fileBuffer, mimeType, platform) {
               last_seen_info: { type: Type.STRING, nullable: true },
               notes: { type: Type.STRING, nullable: true }
             },
-            required: ['platform', 'username']
+            required: [
+              'platform',
+              'username',
+              'password',
+              'name',
+              'email',
+              'mac_address',
+              'expiration_date',
+              'active_connections',
+              'max_connections',
+              'package_name',
+              'is_trial',
+              'activation_date',
+              'is_banned',
+              'last_seen_info',
+              'notes'
+            ]
           }
         }
       }
