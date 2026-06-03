@@ -277,3 +277,19 @@ El servidor incluye un endpoint público de monitoreo de salud (`/health`) para 
     *   **Accepted Status Codes:** `200` (el servidor devuelve 200 OK cuando está en línea y conectado a la base de datos).
 3.  Haz clic en **Save** (Guardar).
 
+---
+
+## 8. Solución de Problemas (Troubleshooting) y Notas de Desarrollo
+
+### A. ¿Cómo ver los logs de la aplicación en producción?
+La aplicación está configurada para enviar logs a la salida estándar (`stdout`/`stderr`). Para consultarlos en Dokploy:
+1. Entra a tu panel de **Dokploy**.
+2. Ve a la sección **Applications** y selecciona el servicio `iptv-backend`.
+3. Haz clic en la pestaña **Logs** para ver en tiempo real el registro de peticiones, procesamiento OCR de Gemini e interacciones con MySQL.
+
+### B. Campos omitidos por Gemini (Structured Outputs)
+Al procesar capturas con muchos usuarios (por ejemplo, listas de más de 20 registros), Gemini puede omitir campos opcionales del JSON para optimizar la cantidad de tokens devueltos. 
+
+Si un campo (como `expiration_date` o `mac_address`) es omitido del objeto JSON, el backend procesará el campo como `null`. Debido a la lógica `IFNULL` en los queries de MySQL (`expiration_date = IFNULL(VALUES(expiration_date), expiration_date)`), un valor nulo provocará que la base de datos **no actualice** el valor existente.
+
+*   **Solución implementada:** En el archivo `src/services/ocrService.js`, todos los campos del esquema de respuesta de la API de Gemini están definidos en la lista de campos requeridos (`required`). Esto obliga a Gemini a incluir cada propiedad en todos los objetos del arreglo (colocándola como `null` si no está visible en la imagen), garantizando que las actualizaciones en la base de datos se ejecuten correctamente sin omitir datos.
