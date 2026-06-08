@@ -293,3 +293,13 @@ Al procesar capturas con muchos usuarios (por ejemplo, listas de más de 20 regi
 Si un campo (como `expiration_date` o `mac_address`) es omitido del objeto JSON, el backend procesará el campo como `null`. Debido a la lógica `IFNULL` en los queries de MySQL (`expiration_date = IFNULL(VALUES(expiration_date), expiration_date)`), un valor nulo provocará que la base de datos **no actualice** el valor existente.
 
 *   **Solución implementada:** En el archivo `src/services/ocrService.js`, todos los campos del esquema de respuesta de la API de Gemini están definidos en la lista de campos requeridos (`required`). Esto obliga a Gemini a incluir cada propiedad en todos los objetos del arreglo (colocándola como `null` si no está visible en la imagen), garantizando que las actualizaciones en la base de datos se ejecuten correctamente sin omitir datos.
+
+### C. Detección y Prevención de Duplicados por Errores de OCR
+Para mitigar la duplicación de usuarios cuando la API de Gemini confunde caracteres similares en la lectura de imágenes (por ejemplo, confundir `Z` con `2`, o `S` con `5`), el backend incluye:
+1. **Validación Inteligente (Upsert por similitud)**: En la carga de capturas de FLIX, el backend busca coincidencias por misma dirección MAC, o por mismo nombre y similitud del código de usuario (utilizando distancia Levenshtein). Si encuentra una coincidencia lógica, actualiza el usuario existente en vez de crear uno nuevo.
+2. **Script de Diagnóstico**: Un script en `src/detect-duplicates.js` que audita la base de datos y localiza registros duplicados exactos, duplicados cruzados entre plataformas y posibles duplicados por errores del OCR. Puedes ejecutarlo localmente o en el contenedor de Dokploy con:
+   ```bash
+   node src/detect-duplicates.js
+   ```
+3. **Endpoint de Auditoría**: La ruta protegida `GET /api/debug-duplicates` (requiere cabecera `X-API-Key`) que devuelve los duplicados potenciales encontrados en formato JSON.
+
