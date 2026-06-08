@@ -37,7 +37,7 @@ export async function uploadScreenshot(req, res) {
           continue;
         }
 
-        // 2. Insertar/Actualizar en la base de datos (Upsert)
+        // 2. Insertar/Actualizar en la base de datos (Upsert inteligente para evitar duplicados por OCR)
         const connection = await pool.getConnection();
         try {
           await connection.beginTransaction();
@@ -53,54 +53,129 @@ export async function uploadScreenshot(req, res) {
             const expirationDate = user.expiration_date ? user.expiration_date : null;
             const activationDate = user.activation_date ? user.activation_date : null;
 
-            // Query de Upsert con IFNULL para no sobreescribir datos valiosos con nulos
-            const query = `
-              INSERT INTO iptv_users (
-                platform, username, password, name, email, mac_address, 
-                expiration_date, active_connections, max_connections, 
-                package_name, is_trial, activation_date, is_banned, 
-                last_seen_info, notes, raw_ocr_metadata
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              ON DUPLICATE KEY UPDATE
-                password = IFNULL(VALUES(password), password),
-                name = IFNULL(VALUES(name), name),
-                email = IFNULL(VALUES(email), email),
-                mac_address = IFNULL(VALUES(mac_address), mac_address),
-                expiration_date = IFNULL(VALUES(expiration_date), expiration_date),
-                active_connections = IFNULL(VALUES(active_connections), active_connections),
-                max_connections = IFNULL(VALUES(max_connections), max_connections),
-                package_name = IFNULL(VALUES(package_name), package_name),
-                is_trial = IFNULL(VALUES(is_trial), is_trial),
-                activation_date = IFNULL(VALUES(activation_date), activation_date),
-                is_banned = IFNULL(VALUES(is_banned), is_banned),
-                last_seen_info = IFNULL(VALUES(last_seen_info), last_seen_info),
-                notes = IFNULL(VALUES(notes), notes),
-                raw_ocr_metadata = IFNULL(VALUES(raw_ocr_metadata), raw_ocr_metadata);
-            `;
-
             const rawOcr = JSON.stringify(user);
 
-            const [result] = await connection.query(query, [
-              finalPlatform,
-              finalUsername,
-              user.password || null,
-              user.name || null,
-              user.email || null,
-              user.mac_address || null,
-              expirationDate,
-              user.active_connections !== undefined ? user.active_connections : 0,
-              user.max_connections !== undefined ? user.max_connections : 1,
-              user.package_name || null,
-              user.is_trial !== undefined ? user.is_trial : false,
-              activationDate,
-              user.is_banned !== undefined ? user.is_banned : false,
-              user.last_seen_info || null,
-              user.notes || null,
-              rawOcr
-            ]);
+            // Búsqueda inteligente de duplicados antes de insertar
+            let existingId = null;
+
+            // Paso A: Buscar por dirección MAC (Serie) si está disponible
+            const finalMacAddress = (user.mac_address || '').trim();
+            if (finalMacAddress) {
+              const [macRows] = await connection.query(
+                'SELECT id FROM iptv_users WHERE platform = ? AND mac_address = ? LIMIT 1',
+                [finalPlatform, finalMacAddress]
+              );
+              if (macRows.length > 0) {
+                existingId = macRows[0].id;
+              }
+            }
+
+            // Paso B: Buscar por nombre idéntico y validar similitud de username (evitar falsos positivos)
+            const finalName = (user.name || '').trim();
+            if (!existingId && finalName) {
+              const [nameRows] = await connection.query(
+                'SELECT id, username FROM iptv_users WHERE platform = ? AND name = ?',
+                [finalPlatform, finalName]
+              );
+              
+              for (const row of nameRows) {
+                if (isSimilarUsername(row.username, finalUsername)) {
+                  existingId = row.id;
+                  break;
+                }
+              }
+            }
+
+            let query;
+            let queryParams;
+
+            if (existingId) {
+              // Ya existe el usuario (por MAC o nombre + similitud de username), actualizamos por ID
+              query = `
+                UPDATE iptv_users SET
+                  password = IFNULL(?, password),
+                  name = IFNULL(?, name),
+                  email = IFNULL(?, email),
+                  mac_address = IFNULL(?, mac_address),
+                  expiration_date = IFNULL(?, expiration_date),
+                  active_connections = COALESCE(?, active_connections),
+                  max_connections = COALESCE(?, max_connections),
+                  package_name = IFNULL(?, package_name),
+                  is_trial = COALESCE(?, is_trial),
+                  activation_date = IFNULL(?, activation_date),
+                  is_banned = COALESCE(?, is_banned),
+                  last_seen_info = IFNULL(?, last_seen_info),
+                  notes = IFNULL(?, notes),
+                  raw_ocr_metadata = IFNULL(?, raw_ocr_metadata)
+                WHERE id = ?
+              `;
+              queryParams = [
+                user.password || null,
+                user.name || null,
+                finalMacAddress || null,
+                expirationDate,
+                user.active_connections !== undefined ? user.active_connections : null,
+                user.max_connections !== undefined ? user.max_connections : null,
+                user.package_name || null,
+                user.is_trial !== undefined ? user.is_trial : null,
+                activationDate,
+                user.is_banned !== undefined ? user.is_banned : null,
+                user.last_seen_info || null,
+                user.notes || null,
+                rawOcr,
+                existingId
+              ];
+            } else {
+              // No existe, procedemos con el INSERT normal
+              query = `
+                INSERT INTO iptv_users (
+                  platform, username, password, name, email, mac_address, 
+                  expiration_date, active_connections, max_connections, 
+                  package_name, is_trial, activation_date, is_banned, 
+                  last_seen_info, notes, raw_ocr_metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                  password = IFNULL(VALUES(password), password),
+                  name = IFNULL(VALUES(name), name),
+                  email = IFNULL(VALUES(email), email),
+                  mac_address = IFNULL(VALUES(mac_address), mac_address),
+                  expiration_date = IFNULL(VALUES(expiration_date), expiration_date),
+                  active_connections = IFNULL(VALUES(active_connections), active_connections),
+                  max_connections = IFNULL(VALUES(max_connections), max_connections),
+                  package_name = IFNULL(VALUES(package_name), package_name),
+                  is_trial = IFNULL(VALUES(is_trial), is_trial),
+                  activation_date = IFNULL(VALUES(activation_date), activation_date),
+                  is_banned = IFNULL(VALUES(is_banned), is_banned),
+                  last_seen_info = IFNULL(VALUES(last_seen_info), last_seen_info),
+                  notes = IFNULL(VALUES(notes), notes),
+                  raw_ocr_metadata = IFNULL(VALUES(raw_ocr_metadata), raw_ocr_metadata);
+              `;
+              queryParams = [
+                finalPlatform,
+                finalUsername,
+                user.password || null,
+                user.name || null,
+                user.email || null,
+                finalMacAddress || null,
+                expirationDate,
+                user.active_connections !== undefined ? user.active_connections : 0,
+                user.max_connections !== undefined ? user.max_connections : 1,
+                user.package_name || null,
+                user.is_trial !== undefined ? user.is_trial : false,
+                activationDate,
+                user.is_banned !== undefined ? user.is_banned : false,
+                user.last_seen_info || null,
+                user.notes || null,
+                rawOcr
+              ];
+            }
+
+            const [result] = await connection.query(query, queryParams);
 
             stats.processedUsers++;
-            if (result.affectedRows === 1) {
+            if (existingId) {
+              stats.updatedCount++;
+            } else if (result.affectedRows === 1) {
               stats.insertedCount++;
             } else if (result.affectedRows === 2) {
               stats.updatedCount++;
@@ -461,6 +536,55 @@ export async function deleteUser(req, res) {
   }
 }
 
+// --- CONTROLLER DE DEPURACIÓN DE DUPLICADOS ---
+export async function getDuplicatesDebug(req, res) {
+  try {
+    const [allUsers] = await pool.query(`
+      SELECT id, platform, username, name, mac_address, expiration_date 
+      FROM iptv_users 
+      ORDER BY name ASC, id ASC
+    `);
+
+    const fuzzyDupes = [];
+    for (let i = 0; i < allUsers.length; i++) {
+      for (let j = i + 1; j < allUsers.length; j++) {
+        const u1 = allUsers[i];
+        const u2 = allUsers[j];
+
+        if (u1.platform !== u2.platform) continue;
+
+        let matchReason = '';
+
+        if (u1.mac_address && u2.mac_address && u1.mac_address === u2.mac_address && u1.username !== u2.username) {
+          matchReason = 'Misma Dirección MAC';
+        }
+        else if (u1.name && u2.name && u1.name === u2.name && u1.username !== u2.username && isSimilarUsername(u1.username, u2.username)) {
+          matchReason = 'Mismo nombre + código similar (Posible error OCR)';
+        }
+
+        if (matchReason) {
+          fuzzyDupes.push({
+            reason: matchReason,
+            platform: u1.platform,
+            name: u1.name || 'Sin nombre',
+            mac_address: u1.mac_address || 'Sin MAC',
+            user1: { id: u1.id, username: u1.username, expiration_date: u1.expiration_date },
+            user2: { id: u2.id, username: u2.username, expiration_date: u2.expiration_date }
+          });
+        }
+      }
+    }
+
+    return res.status(200).json({
+      total_potential_duplicates: fuzzyDupes.length,
+      duplicates: fuzzyDupes
+    });
+  } catch (error) {
+    console.error('Error al detectar duplicados:', error);
+    return res.status(500).json({ error: 'Error al detectar duplicados' });
+  }
+}
+
 // --- CONTROLLER DE DASHBOARD / ESTADÍSTICAS ---
 
 export async function getDashboardStats(req, res) {
@@ -527,4 +651,54 @@ export async function getDashboardStats(req, res) {
     console.error('Error al obtener estadísticas del dashboard:', error);
     return res.status(500).json({ error: 'Error al consultar las estadísticas' });
   }
+}
+
+// --- FUNCIONES AUXILIARES PARA EVITAR DUPLICADOS POR OCR ---
+
+/**
+ * Calcula la distancia Levenshtein entre dos cadenas.
+ */
+function getLevenshteinDistance(a, b) {
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // Sustitución
+          Math.min(
+            matrix[i][j - 1] + 1, // Inserción
+            matrix[i - 1][j] + 1  // Eliminación
+          )
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+/**
+ * Compara dos usernames para ver si son lo suficientemente similares 
+ * (ignorando mayúsculas/minúsculas, espacios y errores comunes del OCR como z/2 o s/5).
+ */
+function isSimilarUsername(username1, username2) {
+  const u1 = (username1 || '').trim().toLowerCase();
+  const u2 = (username2 || '').trim().toLowerCase();
+  if (u1 === u2) return true;
+  
+  // Normalizar caracteres comunes que el OCR confunde
+  const clean = (s) => s
+    .replace(/[z2]/g, 'z')
+    .replace(/[s5]/g, 's')
+    .replace(/[o0]/g, 'o')
+    .replace(/[il1]/g, 'i');
+
+  if (clean(u1) === clean(u2)) return true;
+
+  // Si tienen longitudes parecidas y una distancia Levenshtein menor o igual a 2
+  const dist = getLevenshteinDistance(u1, u2);
+  return dist <= 2;
 }

@@ -26,6 +26,11 @@ export async function parseIPTVImage(fileBuffer, mimeType, platform) {
       Reglas de extracción para FLIX:
       - platform: Debe ser exactamente 'FLIX'.
       - username: Extrae el valor de la columna 'Código' (ej: VWJRTL, MRLG8G). Este campo es obligatorio y único.
+        IMPORTANTE: Los códigos son alfanuméricos y distinguen mayúsculas/minúsculas. Presta extrema atención para no confundir caracteres similares:
+        * La letra 'Z' con el número '2'.
+        * La letra 'S' con el número '5'.
+        * La letra 'O' con el número '0'.
+        * La letra 'I' (i mayúscula) o 'l' (l minúscula) con el número '1'.
       - name: Extrae el valor de la columna 'Nombre' (ej: Dervil Chalup).
       - email: Extrae la columna 'Correo' si tiene un correo válido, de lo contrario deja nulo.
       - mac_address: Extrae el valor completo de la columna 'Serie' (ej: a652e1ab4f7663a5com.flix.tv).

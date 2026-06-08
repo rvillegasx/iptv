@@ -8,7 +8,8 @@ import {
   getUserById,
   updateUser,
   deleteUser,
-  getDashboardStats
+  getDashboardStats,
+  getDuplicatesDebug
 } from '../controllers/userController.js';
 
 dotenv.config();
@@ -87,6 +88,9 @@ router.get('/users', getUsers);
 router.get('/users/:id', getUserById);
 router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
+
+// Depuración de duplicados en base de datos
+router.get('/debug-duplicates', getDuplicatesDebug);
 
 // Estadísticas para Flutter Dashboard
 router.get('/dashboard/stats', getDashboardStats);
