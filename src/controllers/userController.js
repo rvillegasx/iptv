@@ -112,6 +112,7 @@ export async function uploadScreenshot(req, res) {
               queryParams = [
                 user.password || null,
                 user.name || null,
+                user.email || null,
                 finalMacAddress || null,
                 expirationDate,
                 user.active_connections !== undefined ? user.active_connections : null,
