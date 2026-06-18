@@ -171,11 +171,27 @@ function scrapeFutvreUsers() {
   const possibleRows = container.querySelectorAll(headerRow.tagName.toLowerCase());
   const rows = [];
 
+  let lengthMismatch = 0;
+  let isHeader = 0;
+  let invisible = 0;
+  let userInvalid = 0;
+  let passInvalid = 0;
+  let connInvalid = 0;
+
   for (const el of possibleRows) {
     const cells = Array.from(el.children);
-    if (cells.length !== headerLength) continue;
-    if (el === headerRow || el.textContent.includes('Contraseña') && el.textContent.includes('Caducidad')) continue;
-    if (!isElementVisible(el)) continue;
+    if (cells.length !== headerLength) {
+      lengthMismatch++;
+      continue;
+    }
+    if (el === headerRow || el.textContent.includes('Contraseña') && el.textContent.includes('Caducidad')) {
+      isHeader++;
+      continue;
+    }
+    if (!isElementVisible(el)) {
+      invisible++;
+      continue;
+    }
 
     const getCellText = (cell) => {
       if (!cell) return '';
@@ -184,19 +200,41 @@ function scrapeFutvreUsers() {
     };
 
     const userVal = getCellText(cells[userIndex]);
-    if (!userVal || userVal.includes(' ') || userVal.length > 30 || normalizeText(userVal) === 'nombredeusuario') continue;
+    if (!userVal || userVal.includes(' ') || userVal.length > 30 || normalizeText(userVal) === 'nombredeusuario') {
+      userInvalid++;
+      continue;
+    }
 
     const passVal = getCellText(cells[passIndex]);
-    if (!passVal || passVal.includes(' ')) continue;
+    if (!passVal || passVal.includes(' ')) {
+      passInvalid++;
+      continue;
+    }
 
     // Validación extra: verificar formato de conexiones (e.g., "0/2")
     if (connectionsIndex !== -1) {
       const connVal = getCellText(cells[connectionsIndex]);
-      if (!connVal || !connVal.includes('/')) continue;
+      if (!connVal || !connVal.includes('/')) {
+        connInvalid++;
+        continue;
+      }
     }
 
     rows.push(el);
   }
+
+  console.log("FUTVRE scraping stats:", {
+    headerTagName: headerRow.tagName,
+    headerLength,
+    possibleRowsCount: possibleRows.length,
+    lengthMismatch,
+    isHeader,
+    invisible,
+    userInvalid,
+    passInvalid,
+    connInvalid,
+    matchedRowsCount: rows.length
+  });
 
   const users = [];
   for (const row of rows) {
