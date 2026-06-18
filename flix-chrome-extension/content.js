@@ -1,4 +1,5 @@
 // Content script para extraer y sincronizar los usuarios del panel de FLIX
+console.log("FLIX IPTV Exporter: script cargado con éxito en: " + window.location.href);
 
 // Helper para normalizar texto (quitar acentos, pasar a minúsculas, limpiar espacios)
 function normalizeText(str) {
@@ -11,71 +12,114 @@ function normalizeText(str) {
     .trim();
 }
 
-// Función para buscar e identificar la tabla de FLIX basada en cabeceras
+// Función universal para buscar e identificar los datos de la tabla (soporta table y divs)
 function scrapeFlixUsers() {
-  const tables = document.querySelectorAll('table');
-  for (const table of tables) {
-    // Buscar en th y td de la cabecera (primera fila, thead, etc.)
-    const headerCells = table.querySelectorAll('th, tr:first-child td, thead td');
-    const headers = Array.from(headerCells).map(cell => cell.textContent.trim());
-    const headersNormalized = headers.map(normalizeText);
+  const allElements = document.querySelectorAll('div, tr, thead, ul, header, section');
+  let headerRow = null;
+  let headersNormalized = [];
+  let headerTexts = [];
 
-    // Validar si es la tabla correcta buscando cabeceras representativas
-    const hasCodigo = headersNormalized.some(h => h.includes('codigo'));
-    const hasVencimiento = headersNormalized.some(h => h.includes('vencimiento'));
+  // 1. Buscar la fila de cabecera
+  for (const el of allElements) {
+    const children = Array.from(el.children);
+    if (children.length < 2) continue;
+
+    const childTexts = children.map(c => c.textContent.trim());
+    const childTextsNorm = childTexts.map(normalizeText);
+
+    // Validar si el elemento contiene palabras clave de FLIX
+    const hasCodigo = childTextsNorm.some(t => t === 'codigo');
+    const hasVencimiento = childTextsNorm.some(t => t === 'vencimiento');
 
     if (hasCodigo && hasVencimiento) {
-      const rows = table.querySelectorAll('tbody tr, tr:not(:first-child)');
-      const users = [];
-
-      // Mapear los índices dinámicamente usando coincidencia parcial
-      const codeIndex = headersNormalized.findIndex(h => h.includes('codigo'));
-      const nameIndex = headersNormalized.findIndex(h => h.includes('nombre'));
-      const emailIndex = headersNormalized.findIndex(h => h.includes('correo') || h.includes('mail'));
-      const macIndex = headersNormalized.findIndex(h => h.includes('serie') || h.includes('mac'));
-      const connectionsIndex = headersNormalized.findIndex(h => h.includes('eq') || h.includes('conex'));
-      const activationIndex = headersNormalized.findIndex(h => h.includes('alta') || h.includes('registro') || h.includes('creado'));
-      const expirationIndex = headersNormalized.findIndex(h => h.includes('vencimiento') || h.includes('caducidad'));
-
-      for (const row of rows) {
-        const cells = row.querySelectorAll('td');
-        if (cells.length < headers.length) continue;
-
-        // Saltar si la fila es de cabecera
-        if (row.querySelector('th')) continue;
-
-        const getCellText = (cell) => {
-          if (!cell) return null;
-          // Buscar si hay enlaces, spans u otros elementos dentro de la celda
-          const innerElement = cell.querySelector('a, span, button');
-          return (innerElement ? innerElement.textContent : cell.textContent).trim();
-        };
-
-        const username = getCellText(cells[codeIndex]);
-        if (!username || normalizeText(username) === 'codigo') continue; // Evitar cabecera duplicada
-
-        const expiration_date = getCellText(cells[expirationIndex]);
-        const name = nameIndex !== -1 ? getCellText(cells[nameIndex]) : null;
-        const email = emailIndex !== -1 ? getCellText(cells[emailIndex]) : null;
-        const mac_address = macIndex !== -1 ? getCellText(cells[macIndex]) : null;
-        const max_connections = connectionsIndex !== -1 ? parseInt(getCellText(cells[connectionsIndex]), 10) : 1;
-        const activation_date = activationIndex !== -1 ? getCellText(cells[activationIndex]) : null;
-
-        users.push({
-          platform: 'FLIX',
-          username,
-          name,
-          email: email || null,
-          mac_address,
-          max_connections: isNaN(max_connections) ? 1 : max_connections,
-          activation_date,
-          expiration_date
-        });
-      }
-      return users;
+      // Queremos evitar contenedores gigantes, por lo que buscamos el elemento más profundo posible
+      headerRow = el;
+      headersNormalized = childTextsNorm;
+      headerTexts = childTexts;
+      break;
     }
   }
-  return [];
+
+  if (!headerRow) {
+    console.log("FLIX IPTV Exporter: No se detectó ninguna cabecera de tabla con 'Código' y 'Vencimiento'.");
+    return [];
+  }
+
+  console.log("FLIX IPTV Exporter: Fila de cabecera detectada:", headerTexts);
+
+  // 2. Buscar las filas de datos
+  let rows = [];
+  
+  // Caso A: Es una tabla HTML estándar
+  if (headerRow.tagName === 'TR') {
+    const table = headerRow.closest('table');
+    if (table) {
+      const allRows = Array.from(table.querySelectorAll('tr'));
+      rows = allRows.filter(r => r !== headerRow && !r.querySelector('th'));
+      console.log(`FLIX IPTV Exporter: Detectada estructura de tabla HTML standard. Filas encontradas: ${rows.length}`);
+    }
+  }
+
+  // Caso B: Es un diseño basado en divs u otros elementos flexibles
+  if (rows.length === 0) {
+    const parent = headerRow.parentElement;
+    if (parent) {
+      const siblings = Array.from(parent.children);
+      const headerIndex = siblings.indexOf(headerRow);
+      // Las filas de datos son los hermanos posteriores al header
+      rows = siblings.slice(headerIndex + 1);
+      console.log(`FLIX IPTV Exporter: Detectada estructura Flexbox/Divs. Filas encontradas: ${rows.length}`);
+    }
+  }
+
+  // 3. Mapear columnas a índices
+  const codeIndex = headersNormalized.findIndex(h => h.includes('codigo'));
+  const nameIndex = headersNormalized.findIndex(h => h.includes('nombre'));
+  const emailIndex = headersNormalized.findIndex(h => h.includes('correo') || h.includes('mail'));
+  const macIndex = headersNormalized.findIndex(h => h.includes('serie') || h.includes('mac'));
+  const connectionsIndex = headersNormalized.findIndex(h => h.includes('eq') || h.includes('conex'));
+  const activationIndex = headersNormalized.findIndex(h => h.includes('alta') || h.includes('registro') || h.includes('creado'));
+  const expirationIndex = headersNormalized.findIndex(h => h.includes('vencimiento') || h.includes('caducidad'));
+
+  const users = [];
+  for (const row of rows) {
+    const cells = Array.from(row.children);
+    // Saltar si no tiene suficientes columnas
+    if (cells.length < headersNormalized.length) continue;
+
+    // Evitar procesar headers duplicados o filas vacías
+    if (row.querySelector('th') || row === headerRow) continue;
+
+    const getCellText = (cell) => {
+      if (!cell) return null;
+      // Extraer texto plano o contenido dentro de un enlace/span
+      const innerElement = cell.querySelector('a, span, button');
+      return (innerElement ? innerElement.textContent : cell.textContent).trim();
+    };
+
+    const username = getCellText(cells[codeIndex]);
+    if (!username || normalizeText(username) === 'codigo' || username.length > 30) continue;
+
+    const expiration_date = getCellText(cells[expirationIndex]);
+    const name = nameIndex !== -1 ? getCellText(cells[nameIndex]) : null;
+    const email = emailIndex !== -1 ? getCellText(cells[emailIndex]) : null;
+    const mac_address = macIndex !== -1 ? getCellText(cells[macIndex]) : null;
+    const max_connections = connectionsIndex !== -1 ? parseInt(getCellText(cells[connectionsIndex]), 10) : 1;
+    const activation_date = activationIndex !== -1 ? getCellText(cells[activationIndex]) : null;
+
+    users.push({
+      platform: 'FLIX',
+      username,
+      name,
+      email: email || null,
+      mac_address,
+      max_connections: isNaN(max_connections) ? 1 : max_connections,
+      activation_date,
+      expiration_date
+    });
+  }
+
+  return users;
 }
 
 // Inyectar el botón flotante si se encuentra la tabla de FLIX
@@ -86,11 +130,16 @@ function initExtensionWidget() {
   }
 
   // Prevenir inyecciones duplicadas
-  if (document.getElementById('flix-sync-widget')) return;
+  if (document.getElementById('flix-sync-widget')) {
+    // Actualizar el conteo de usuarios si ya existe el widget
+    const countBadge = document.querySelector('#flix-sync-widget span');
+    if (countBadge) countBadge.textContent = `${users.length} filas`;
+    return;
+  }
 
-  console.log(`FLIX IPTV Exporter: ¡Tabla detectada con ${users.length} usuarios! Creando widget flotante.`);
+  console.log(`FLIX IPTV Exporter: ¡Datos detectados correctamente! Creando widget flotante.`);
 
-  // Crear contenedor del widget flotante con estilos modernos (glassmorphism)
+  // Crear contenedor del widget flotante con estilos modernos
   const widget = document.createElement('div');
   widget.id = 'flix-sync-widget';
   Object.assign(widget.style, {
@@ -98,12 +147,12 @@ function initExtensionWidget() {
     top: '20px',
     right: '20px',
     zIndex: '999999',
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
     backdropFilter: 'blur(8px)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
     borderRadius: '12px',
     padding: '16px',
-    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4)',
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
     color: '#f8fafc',
     fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
     fontSize: '14px',
@@ -118,7 +167,7 @@ function initExtensionWidget() {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
         FLIX IPTV Sync
       </div>
-      <span style="font-size: 11px; background-color: #1e293b; padding: 2px 6px; border-radius: 20px; color: #94a3b8;">
+      <span style="font-size: 11px; background-color: #1e293b; padding: 2px 6px; border-radius: 20px; color: #94a3b8; font-weight: 600;">
         ${users.length} filas
       </span>
     </div>
@@ -154,13 +203,12 @@ function initExtensionWidget() {
   const syncBtn = document.getElementById('flix-sync-btn');
   const statusDiv = document.getElementById('flix-sync-status');
 
-  // Agregar efectos hover al botón
+  // Hover y animación del botón
   syncBtn.addEventListener('mouseenter', () => syncBtn.style.backgroundColor = '#0369a1');
   syncBtn.addEventListener('mouseleave', () => syncBtn.style.backgroundColor = '#0284c7');
   syncBtn.addEventListener('mousedown', () => syncBtn.style.transform = 'scale(0.98)');
   syncBtn.addEventListener('mouseup', () => syncBtn.style.transform = 'scale(1)');
 
-  // Acción de sincronizar
   syncBtn.addEventListener('click', async () => {
     syncBtn.disabled = true;
     syncBtn.style.opacity = '0.6';
@@ -171,14 +219,13 @@ function initExtensionWidget() {
     statusDiv.style.color = '#38bdf8';
     statusDiv.textContent = 'Obteniendo configuración...';
 
-    // Obtener configuración guardada de la extensión
     chrome.storage.local.get(['apiUrl', 'apiKey'], async (config) => {
       const { apiUrl, apiKey } = config;
 
       if (!apiUrl) {
         statusDiv.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
         statusDiv.style.color = '#ef4444';
-        statusDiv.innerHTML = '❌ Configura la URL de la API abriendo la ventana emergente de la extensión en la barra de herramientas.';
+        statusDiv.innerHTML = '❌ Configura la URL de la API abriendo el popup de la extensión en la barra de herramientas.';
         syncBtn.disabled = false;
         syncBtn.style.opacity = '1';
         syncBtn.style.cursor = 'pointer';
@@ -186,8 +233,6 @@ function initExtensionWidget() {
       }
 
       statusDiv.textContent = 'Enviando datos al servidor...';
-
-      // Scrapear nuevamente para capturar los datos actuales en pantalla
       const currentUsers = scrapeFlixUsers();
 
       try {
@@ -216,13 +261,13 @@ function initExtensionWidget() {
           const errData = await response.json().catch(() => ({}));
           statusDiv.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
           statusDiv.style.color = '#ef4444';
-          statusDiv.innerHTML = `❌ Error en el servidor (${response.status}):<br>${errData.error || 'No autorizado'}`;
+          statusDiv.innerHTML = `❌ Error del servidor (${response.status}):<br>${errData.error || 'No autorizado'}`;
         }
       } catch (err) {
         console.error(err);
         statusDiv.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
         statusDiv.style.color = '#ef4444';
-        statusDiv.innerHTML = '❌ No se pudo conectar al servidor. Revisa si está encendido y la URL.';
+        statusDiv.innerHTML = '❌ Error de red al conectar al servidor.';
       } finally {
         syncBtn.disabled = false;
         syncBtn.style.opacity = '1';
@@ -232,18 +277,12 @@ function initExtensionWidget() {
   });
 }
 
-// Iniciar monitoreo del DOM
+// Observar dinámicamente cambios en el DOM para SPA y renderizado AJAX
 function observeDOM() {
-  const table = document.querySelector('table');
-  if (table) {
-    initExtensionWidget();
-  }
+  initExtensionWidget();
 
   const observer = new MutationObserver(() => {
-    const table = document.querySelector('table');
-    if (table) {
-      initExtensionWidget();
-    }
+    initExtensionWidget();
   });
 
   observer.observe(document.body, {
@@ -252,7 +291,6 @@ function observeDOM() {
   });
 }
 
-// Ejecutar cuando esté listo
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', observeDOM);
 } else {
