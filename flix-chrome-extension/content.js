@@ -28,7 +28,7 @@ function scrapeFlixUsers() {
 
   for (const el of allElements) {
     const children = Array.from(el.children);
-    if (children.length < 2) continue;
+    if (children.length < 5) continue;
 
     const childTexts = children.map(c => c.textContent.trim());
     const childTextsNorm = childTexts.map(normalizeText);
@@ -127,15 +127,15 @@ function scrapeFutvreUsers() {
   // 1. Buscar la fila de cabecera de FUTVRE
   for (const el of allElements) {
     const children = Array.from(el.children);
-    if (children.length < 2) continue;
+    if (children.length < 5) continue; // Requiere al menos 5 columnas para evitar contenedores generales de la página
 
     const childTexts = children.map(c => c.textContent.trim());
     const childTextsNorm = childTexts.map(normalizeText);
 
-    // Identificar FUTVRE buscando usuario, contraseña y caducidad
-    const hasUsuario = childTextsNorm.some(t => t.includes('usuario'));
-    const hasContrasena = childTextsNorm.some(t => t.includes('contrasena') || t === 'password');
-    const hasCaducidad = childTextsNorm.some(t => t.includes('caducidad'));
+    // Identificar FUTVRE buscando usuario, contraseña y caducidad en celdas individuales cortas
+    const hasUsuario = childTextsNorm.some(t => t.includes('usuario') && t.length < 25);
+    const hasContrasena = childTextsNorm.some(t => (t.includes('contrasena') || t === 'password') && t.length < 25);
+    const hasCaducidad = childTextsNorm.some(t => t.includes('caducidad') && t.length < 25);
 
     if (hasUsuario && hasContrasena && hasCaducidad) {
       headerRow = el;
