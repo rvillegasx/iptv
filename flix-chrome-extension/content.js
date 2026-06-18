@@ -267,7 +267,7 @@ function initExtensionWidget() {
 
   if (users.length === 0) {
     // Reactivar observación
-    if (domObserver) {
+    if (domObserver && document.body) {
       domObserver.observe(document.body, { childList: true, subtree: true });
     }
     return;
@@ -287,7 +287,7 @@ function initExtensionWidget() {
     }
     
     // Reactivar observación y salir
-    if (domObserver) {
+    if (domObserver && document.body) {
       domObserver.observe(document.body, { childList: true, subtree: true });
     }
     return;
@@ -432,7 +432,7 @@ function initExtensionWidget() {
     });
   });
 
-  if (domObserver) {
+  if (domObserver && document.body) {
     domObserver.observe(document.body, { childList: true, subtree: true });
   }
 }
