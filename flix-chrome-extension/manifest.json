@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "FLIX IPTV Exporter",
+  "version": "1.0",
+  "description": "Exporta de forma precisa los usuarios del panel de administración de FLIX a tu base de datos IPTV.",
+  "permissions": [
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}

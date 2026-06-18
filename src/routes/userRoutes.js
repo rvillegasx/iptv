@@ -9,7 +9,8 @@ import {
   updateUser,
   deleteUser,
   getDashboardStats,
-  getDuplicatesDebug
+  getDuplicatesDebug,
+  bulkSyncUsers
 } from '../controllers/userController.js';
 
 dotenv.config();
@@ -85,6 +86,7 @@ router.post('/upload-csv', uploadCsvMulter.single('csv'), uploadCSV);
 
 // CRUD de usuarios
 router.get('/users', getUsers);
+router.post('/users/bulk-sync', bulkSyncUsers);
 router.get('/users/:id', getUserById);
 router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);

@@ -703,3 +703,95 @@ function isSimilarUsername(username1, username2) {
   const dist = getLevenshteinDistance(u1, u2);
   return dist <= 2;
 }
+
+// --- CONTROLLER DE ACCESO PARA SYNC MASIVO (EXTENSIÓN DE CHROME / API DIRECTA) ---
+export async function bulkSyncUsers(req, res) {
+  const { users } = req.body;
+
+  if (!Array.isArray(users)) {
+    return res.status(400).json({ error: 'El cuerpo de la solicitud debe contener un arreglo de usuarios en la clave "users"' });
+  }
+
+  const stats = {
+    totalReceived: users.length,
+    processedCount: 0,
+    insertedCount: 0,
+    updatedCount: 0,
+    errors: []
+  };
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    for (const user of users) {
+      const finalUsername = (user.username || '').trim();
+      const finalPlatform = (user.platform || '').trim();
+
+      if (!finalUsername || !finalPlatform) {
+        continue;
+      }
+
+      // Dar formato de fin de día a la fecha si solo viene la fecha (YYYY-MM-DD)
+      let expirationDate = user.expiration_date ? String(user.expiration_date).trim() : null;
+      if (expirationDate && expirationDate.length === 10) {
+        expirationDate += ' 23:59:59';
+      }
+
+      const activationDate = user.activation_date ? String(user.activation_date).trim() : null;
+      const rawMetadata = JSON.stringify(user);
+
+      const query = `
+        INSERT INTO iptv_users (
+          platform, username, name, email, mac_address, 
+          expiration_date, max_connections, activation_date, raw_ocr_metadata
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          name = IFNULL(VALUES(name), name),
+          email = IFNULL(VALUES(email), email),
+          mac_address = IFNULL(VALUES(mac_address), mac_address),
+          expiration_date = IFNULL(VALUES(expiration_date), expiration_date),
+          max_connections = IFNULL(VALUES(max_connections), max_connections),
+          activation_date = IFNULL(VALUES(activation_date), activation_date),
+          raw_ocr_metadata = IFNULL(VALUES(raw_ocr_metadata), raw_ocr_metadata);
+      `;
+
+      const [result] = await connection.query(query, [
+        finalPlatform,
+        finalUsername,
+        user.name || null,
+        user.email || null,
+        user.mac_address || null,
+        expirationDate,
+        user.max_connections !== undefined ? parseInt(user.max_connections, 10) : 1,
+        activationDate,
+        rawMetadata
+      ]);
+
+      stats.processedCount++;
+      if (result.affectedRows === 1) {
+        stats.insertedCount++;
+      } else if (result.affectedRows === 2) {
+        stats.updatedCount++;
+      }
+    }
+
+    await connection.commit();
+    return res.status(200).json({
+      message: 'Sincronización masiva completada con éxito.',
+      stats
+    });
+
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    console.error('Error en bulkSyncUsers:', error);
+    return res.status(500).json({ error: 'Error interno al procesar la sincronización masiva' });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+}
