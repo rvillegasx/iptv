@@ -255,6 +255,12 @@ function scrapeFutvreUsers() {
     });
   }
 
+  console.log("FUTVRE: Usuarios detectados en scraping:", users.map(u => ({
+    username: u.username,
+    password: u.password,
+    connections: `${u.active_connections}/${u.max_connections}`
+  })));
+
   return users;
 }
 
