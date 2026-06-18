@@ -744,28 +744,44 @@ export async function bulkSyncUsers(req, res) {
 
       const query = `
         INSERT INTO iptv_users (
-          platform, username, name, email, mac_address, 
-          expiration_date, max_connections, activation_date, raw_ocr_metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          platform, username, password, name, email, mac_address, 
+          expiration_date, active_connections, max_connections, 
+          package_name, is_trial, activation_date, is_banned, 
+          last_seen_info, notes, raw_ocr_metadata
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
+          password = IFNULL(VALUES(password), password),
           name = IFNULL(VALUES(name), name),
           email = IFNULL(VALUES(email), email),
           mac_address = IFNULL(VALUES(mac_address), mac_address),
           expiration_date = IFNULL(VALUES(expiration_date), expiration_date),
+          active_connections = IFNULL(VALUES(active_connections), active_connections),
           max_connections = IFNULL(VALUES(max_connections), max_connections),
+          package_name = IFNULL(VALUES(package_name), package_name),
+          is_trial = IFNULL(VALUES(is_trial), is_trial),
           activation_date = IFNULL(VALUES(activation_date), activation_date),
+          is_banned = IFNULL(VALUES(is_banned), is_banned),
+          last_seen_info = IFNULL(VALUES(last_seen_info), last_seen_info),
+          notes = IFNULL(VALUES(notes), notes),
           raw_ocr_metadata = IFNULL(VALUES(raw_ocr_metadata), raw_ocr_metadata);
       `;
 
       const [result] = await connection.query(query, [
         finalPlatform,
         finalUsername,
+        user.password || null,
         user.name || null,
         user.email || null,
         user.mac_address || null,
         expirationDate,
+        user.active_connections !== undefined ? parseInt(user.active_connections, 10) : 0,
         user.max_connections !== undefined ? parseInt(user.max_connections, 10) : 1,
+        user.package_name || null,
+        user.is_trial !== undefined ? (user.is_trial === true || user.is_trial === 1 || String(user.is_trial).toLowerCase() === 'true') : false,
         activationDate,
+        user.is_banned !== undefined ? (user.is_banned === true || user.is_banned === 1 || String(user.is_banned).toLowerCase() === 'true') : false,
+        user.last_seen_info || null,
+        user.notes || null,
         rawMetadata
       ]);
 
