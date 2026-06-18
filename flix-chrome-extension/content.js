@@ -19,6 +19,19 @@ function isElementVisible(el) {
   return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
 }
 
+// Helper para extraer el texto limpio de una celda
+function getCellText(cell) {
+  if (!cell) return '';
+  // Si hay un skeleton activo (cargando), retornar vacío
+  if (cell.querySelector('.mantine-Skeleton-root[data-visible="true"]')) {
+    return '';
+  }
+  const clone = cell.cloneNode(true);
+  // Eliminar botones, iconos SVG, scripts y elementos ocultos para lectores de pantalla
+  clone.querySelectorAll('button, svg, script, style, [aria-hidden="true"]').forEach(el => el.remove());
+  return clone.textContent.trim();
+}
+
 // --- PARSER FLIX ---
 function scrapeFlixUsers() {
   const allElements = document.querySelectorAll('div, tr, thead, ul, header, section');
@@ -70,12 +83,6 @@ function scrapeFlixUsers() {
     if (el === headerRow || el.textContent.includes('Vencimiento') && el.textContent.includes('Código')) continue;
     if (!isElementVisible(el)) continue;
 
-    const getCellText = (cell) => {
-      if (!cell) return '';
-      const innerElement = cell.querySelector('a, span, button');
-      return (innerElement ? innerElement.textContent : cell.textContent).trim();
-    };
-
     const codeVal = getCellText(cells[codeIndex]);
     if (!codeVal || codeVal.includes(' ') || codeVal.length > 20 || normalizeText(codeVal) === 'codigo') continue;
 
@@ -88,12 +95,6 @@ function scrapeFlixUsers() {
   const users = [];
   for (const row of rows) {
     const cells = Array.from(row.children);
-    const getCellText = (cell) => {
-      if (!cell) return null;
-      const innerElement = cell.querySelector('a, span, button');
-      return (innerElement ? innerElement.textContent : cell.textContent).trim();
-    };
-
     const username = getCellText(cells[codeIndex]);
     const expiration_date = getCellText(cells[expirationIndex]);
     const name = nameIndex !== -1 ? getCellText(cells[nameIndex]) : null;
@@ -208,12 +209,6 @@ function scrapeFutvreUsers() {
       continue;
     }
 
-    const getCellText = (cell) => {
-      if (!cell) return '';
-      const innerElement = cell.querySelector('a, span, button');
-      return (innerElement ? innerElement.textContent : cell.textContent).trim();
-    };
-
     const userVal = getCellText(cells[userIndex]);
     if (!userVal || userVal.includes(' ') || userVal.length > 30 || normalizeText(userVal) === 'nombredeusuario') {
       userInvalid++;
@@ -254,12 +249,6 @@ function scrapeFutvreUsers() {
   const users = [];
   for (const row of rows) {
     const cells = Array.from(row.children);
-    const getCellText = (cell) => {
-      if (!cell) return null;
-      const innerElement = cell.querySelector('a, span, button');
-      return (innerElement ? innerElement.textContent : cell.textContent).trim();
-    };
-
     const username = getCellText(cells[userIndex]);
     const password = getCellText(cells[passIndex]);
     const reseller = resellerIndex !== -1 ? getCellText(cells[resellerIndex]) : null;
