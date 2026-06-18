@@ -158,7 +158,7 @@ function initExtensionWidget() {
   widget.id = 'flix-sync-widget';
   Object.assign(widget.style, {
     position: 'fixed',
-    top: '20px',
+    bottom: '20px',
     right: '20px',
     zIndex: '999999',
     backgroundColor: 'rgba(15, 23, 42, 0.95)',
