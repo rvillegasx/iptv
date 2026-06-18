@@ -19,7 +19,7 @@ function scrapeFlixUsers() {
   let headersNormalized = [];
   let headerTexts = [];
 
-  // 1. Buscar la fila de cabecera
+  // 1. Buscar la fila de cabecera más específica
   for (const el of allElements) {
     const children = Array.from(el.children);
     if (children.length < 2) continue;
@@ -32,7 +32,6 @@ function scrapeFlixUsers() {
     const hasVencimiento = childTextsNorm.some(t => t === 'vencimiento');
 
     if (hasCodigo && hasVencimiento) {
-      // Queremos evitar contenedores gigantes, por lo que buscamos el elemento más profundo posible
       headerRow = el;
       headersNormalized = childTextsNorm;
       headerTexts = childTexts;
@@ -47,32 +46,7 @@ function scrapeFlixUsers() {
 
   console.log("FLIX IPTV Exporter: Fila de cabecera detectada:", headerTexts);
 
-  // 2. Buscar las filas de datos
-  let rows = [];
-  
-  // Caso A: Es una tabla HTML estándar
-  if (headerRow.tagName === 'TR') {
-    const table = headerRow.closest('table');
-    if (table) {
-      const allRows = Array.from(table.querySelectorAll('tr'));
-      rows = allRows.filter(r => r !== headerRow && !r.querySelector('th'));
-      console.log(`FLIX IPTV Exporter: Detectada estructura de tabla HTML standard. Filas encontradas: ${rows.length}`);
-    }
-  }
-
-  // Caso B: Es un diseño basado en divs u otros elementos flexibles
-  if (rows.length === 0) {
-    const parent = headerRow.parentElement;
-    if (parent) {
-      const siblings = Array.from(parent.children);
-      const headerIndex = siblings.indexOf(headerRow);
-      // Las filas de datos son los hermanos posteriores al header
-      rows = siblings.slice(headerIndex + 1);
-      console.log(`FLIX IPTV Exporter: Detectada estructura Flexbox/Divs. Filas encontradas: ${rows.length}`);
-    }
-  }
-
-  // 3. Mapear columnas a índices
+  // Mapear los índices dinámicamente usando coincidencia parcial
   const codeIndex = headersNormalized.findIndex(h => h.includes('codigo'));
   const nameIndex = headersNormalized.findIndex(h => h.includes('nombre'));
   const emailIndex = headersNormalized.findIndex(h => h.includes('correo') || h.includes('mail'));
@@ -81,25 +55,51 @@ function scrapeFlixUsers() {
   const activationIndex = headersNormalized.findIndex(h => h.includes('alta') || h.includes('registro') || h.includes('creado'));
   const expirationIndex = headersNormalized.findIndex(h => h.includes('vencimiento') || h.includes('caducidad'));
 
+  const headerLength = headersNormalized.length;
+
+  // 2. Buscar las filas de datos con un algoritmo universal basado en la estructura de celdas
+  const possibleRows = document.querySelectorAll('div, tr, li');
+  const rows = [];
+  const dateRegex = /^\d{4}-\d{2}-\d{2}/; // Empieza con YYYY-MM-DD
+
+  for (const el of possibleRows) {
+    const cells = Array.from(el.children);
+    if (cells.length !== headerLength) continue;
+
+    // Evitar que sea la cabecera misma o elementos que no son filas de datos
+    if (el === headerRow || el.textContent.includes('Vencimiento') && el.textContent.includes('Código')) continue;
+
+    const getCellText = (cell) => {
+      if (!cell) return '';
+      const innerElement = cell.querySelector('a, span, button');
+      return (innerElement ? innerElement.textContent : cell.textContent).trim();
+    };
+
+    // Validar que la celda del código no esté vacía, no contenga espacios y sea corta
+    const codeVal = getCellText(cells[codeIndex]);
+    if (!codeVal || codeVal.includes(' ') || codeVal.length > 20 || normalizeText(codeVal) === 'codigo') continue;
+
+    // Validar que la celda de vencimiento comience con formato de fecha (YYYY-MM-DD)
+    const expVal = getCellText(cells[expirationIndex]);
+    if (expVal && !dateRegex.test(expVal)) continue;
+
+    rows.push(el);
+  }
+
+  console.log(`FLIX IPTV Exporter: Filas de datos encontradas por estructura: ${rows.length}`);
+
+  // 3. Procesar las filas validadas
   const users = [];
   for (const row of rows) {
     const cells = Array.from(row.children);
-    // Saltar si no tiene suficientes columnas
-    if (cells.length < headersNormalized.length) continue;
-
-    // Evitar procesar headers duplicados o filas vacías
-    if (row.querySelector('th') || row === headerRow) continue;
 
     const getCellText = (cell) => {
       if (!cell) return null;
-      // Extraer texto plano o contenido dentro de un enlace/span
       const innerElement = cell.querySelector('a, span, button');
       return (innerElement ? innerElement.textContent : cell.textContent).trim();
     };
 
     const username = getCellText(cells[codeIndex]);
-    if (!username || normalizeText(username) === 'codigo' || username.length > 30) continue;
-
     const expiration_date = getCellText(cells[expirationIndex]);
     const name = nameIndex !== -1 ? getCellText(cells[nameIndex]) : null;
     const email = emailIndex !== -1 ? getCellText(cells[emailIndex]) : null;
@@ -225,7 +225,7 @@ function initExtensionWidget() {
       if (!apiUrl) {
         statusDiv.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
         statusDiv.style.color = '#ef4444';
-        statusDiv.innerHTML = '❌ Configura la URL de la API abriendo el popup de la extensión en la barra de herramientas.';
+        statusDiv.innerHTML = '❌ Configura la URL de la API abriendo el popup de la extensión.';
         syncBtn.disabled = false;
         syncBtn.style.opacity = '1';
         syncBtn.style.cursor = 'pointer';
