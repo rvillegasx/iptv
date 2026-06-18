@@ -77,20 +77,53 @@ function scrapeFlixUsers() {
   const rows = [];
   const dateRegex = /^\d{4}-\d{2}-\d{2}/;
 
+  let lengthMismatch = 0;
+  let isHeader = 0;
+  let invisible = 0;
+  let codeInvalid = 0;
+  let dateInvalid = 0;
+
   for (const el of possibleRows) {
     const cells = Array.from(el.children);
-    if (cells.length !== headerLength) continue;
-    if (el === headerRow || el.textContent.includes('Vencimiento') && el.textContent.includes('Código')) continue;
-    if (!isElementVisible(el)) continue;
+    if (cells.length !== headerLength) {
+      lengthMismatch++;
+      continue;
+    }
+    if (el === headerRow || el.textContent.includes('Vencimiento') && el.textContent.includes('Código')) {
+      isHeader++;
+      continue;
+    }
+    if (!isElementVisible(el)) {
+      invisible++;
+      continue;
+    }
 
     const codeVal = getCellText(cells[codeIndex]);
-    if (!codeVal || codeVal.includes(' ') || codeVal.length > 20 || normalizeText(codeVal) === 'codigo') continue;
+    if (!codeVal || codeVal.includes(' ') || codeVal.length > 20 || normalizeText(codeVal) === 'codigo') {
+      codeInvalid++;
+      continue;
+    }
 
     const expVal = getCellText(cells[expirationIndex]);
-    if (expVal && !dateRegex.test(expVal)) continue;
+    if (expVal && !dateRegex.test(expVal)) {
+      dateInvalid++;
+      continue;
+    }
 
     rows.push(el);
   }
+
+  console.log("FLIX scraping stats:", {
+    headerTagName: headerRow.tagName,
+    headerLength,
+    possibleRowsCount: possibleRows.length,
+    lengthMismatch,
+    isHeader,
+    invisible,
+    codeInvalid,
+    dateInvalid,
+    matchedRowsCount: rows.length
+  });
 
   const users = [];
   for (const row of rows) {
