@@ -159,6 +159,9 @@ function scrapeFutvreUsers() {
   const lastSeenIndex = headersNormalized.findIndex(h => h.includes('vista') || h.includes('conexion'));
   const notesIndex = headersNormalized.findIndex(h => h === 'n' || h.includes('nota'));
 
+  console.log("FUTVRE headersNormalized:", headersNormalized);
+  console.log("FUTVRE matched indices:", { userIndex, passIndex, resellerIndex, expirationIndex, banIndex, packageIndex, trialIndex, connectionsIndex, lastSeenIndex, notesIndex });
+
   const headerLength = headersNormalized.length;
   
   let container = headerRow.parentElement;
