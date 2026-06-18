@@ -1,6 +1,8 @@
 // Content script para extraer y sincronizar los usuarios del panel de FLIX
 console.log("FLIX IPTV Exporter: script cargado con éxito en: " + window.location.href);
 
+let domObserver = null;
+
 // Helper para normalizar texto (quitar acentos, pasar a minúsculas, limpiar espacios)
 function normalizeText(str) {
   if (!str) return '';
@@ -40,11 +42,8 @@ function scrapeFlixUsers() {
   }
 
   if (!headerRow) {
-    console.log("FLIX IPTV Exporter: No se detectó ninguna cabecera de tabla con 'Código' y 'Vencimiento'.");
     return [];
   }
-
-  console.log("FLIX IPTV Exporter: Fila de cabecera detectada:", headerTexts);
 
   // Mapear los índices dinámicamente usando coincidencia parcial
   const codeIndex = headersNormalized.findIndex(h => h.includes('codigo'));
@@ -86,8 +85,6 @@ function scrapeFlixUsers() {
     rows.push(el);
   }
 
-  console.log(`FLIX IPTV Exporter: Filas de datos encontradas por estructura: ${rows.length}`);
-
   // 3. Procesar las filas validadas
   const users = [];
   for (const row of rows) {
@@ -124,16 +121,33 @@ function scrapeFlixUsers() {
 
 // Inyectar el botón flotante si se encuentra la tabla de FLIX
 function initExtensionWidget() {
+  // Pausar observación para evitar bucles infinitos al mutar el DOM desde aquí
+  if (domObserver) {
+    domObserver.disconnect();
+  }
+
   const users = scrapeFlixUsers();
   if (users.length === 0) {
+    // Reactivar observación
+    if (domObserver) {
+      domObserver.observe(document.body, { childList: true, subtree: true });
+    }
     return;
   }
 
   // Prevenir inyecciones duplicadas
-  if (document.getElementById('flix-sync-widget')) {
-    // Actualizar el conteo de usuarios si ya existe el widget
+  const existingWidget = document.getElementById('flix-sync-widget');
+  if (existingWidget) {
     const countBadge = document.querySelector('#flix-sync-widget span');
-    if (countBadge) countBadge.textContent = `${users.length} filas`;
+    const expectedText = `${users.length} filas`;
+    if (countBadge && countBadge.textContent !== expectedText) {
+      countBadge.textContent = expectedText;
+    }
+    
+    // Reactivar observación y salir
+    if (domObserver) {
+      domObserver.observe(document.body, { childList: true, subtree: true });
+    }
     return;
   }
 
@@ -275,20 +289,20 @@ function initExtensionWidget() {
       }
     });
   });
+
+  // Reactivar el observer después de agregar el widget
+  if (domObserver) {
+    domObserver.observe(document.body, { childList: true, subtree: true });
+  }
 }
 
 // Observar dinámicamente cambios en el DOM para SPA y renderizado AJAX
 function observeDOM() {
-  initExtensionWidget();
-
-  const observer = new MutationObserver(() => {
+  domObserver = new MutationObserver(() => {
     initExtensionWidget();
   });
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+  initExtensionWidget();
 }
 
 if (document.readyState === 'loading') {
