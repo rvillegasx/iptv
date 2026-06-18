@@ -72,53 +72,20 @@ function scrapeFlixUsers() {
   const rows = [];
   const dateRegex = /^\d{4}-\d{2}-\d{2}/;
 
-  let lengthMismatch = 0;
-  let isHeader = 0;
-  let invisible = 0;
-  let codeInvalid = 0;
-  let dateInvalid = 0;
-
   for (const el of possibleRows) {
     const cells = Array.from(el.children);
-    if (cells.length !== headerLength) {
-      lengthMismatch++;
-      continue;
-    }
-    if (el === headerRow || el.textContent.includes('Vencimiento') && el.textContent.includes('Código')) {
-      isHeader++;
-      continue;
-    }
-    if (!isElementVisible(el)) {
-      invisible++;
-      continue;
-    }
+    if (cells.length !== headerLength) continue;
+    if (el === headerRow || el.textContent.includes('Vencimiento') && el.textContent.includes('Código')) continue;
+    if (!isElementVisible(el)) continue;
 
     const codeVal = getCellText(cells[codeIndex]);
-    if (!codeVal || codeVal.includes(' ') || codeVal.length > 20 || normalizeText(codeVal) === 'codigo') {
-      codeInvalid++;
-      continue;
-    }
+    if (!codeVal || codeVal.includes(' ') || codeVal.length > 20 || normalizeText(codeVal) === 'codigo') continue;
 
     const expVal = getCellText(cells[expirationIndex]);
-    if (expVal && !dateRegex.test(expVal)) {
-      dateInvalid++;
-      continue;
-    }
+    if (expVal && !dateRegex.test(expVal)) continue;
 
     rows.push(el);
   }
-
-  console.log("FLIX scraping stats:", {
-    headerTagName: headerRow.tagName,
-    headerLength,
-    possibleRowsCount: possibleRows.length,
-    lengthMismatch,
-    isHeader,
-    invisible,
-    codeInvalid,
-    dateInvalid,
-    matchedRowsCount: rows.length
-  });
 
   const users = [];
   for (const row of rows) {
@@ -188,7 +155,6 @@ function scrapeFutvreUsers() {
   const lastSeenIndex = headersNormalized.findIndex(h => h.includes('vista') || h.includes('conexion'));
   const notesIndex = headersNormalized.findIndex(h => h === 'n' || h.includes('nota'));
 
-  console.log("FUTVRE headersNormalized:", headersNormalized);
   console.log("FUTVRE matched indices:", { userIndex, passIndex, resellerIndex, expirationIndex, banIndex, packageIndex, trialIndex, connectionsIndex, lastSeenIndex, notesIndex });
 
   const headerLength = headersNormalized.length;
@@ -200,79 +166,26 @@ function scrapeFutvreUsers() {
   const possibleRows = container.querySelectorAll(headerRow.tagName.toLowerCase());
   const rows = [];
 
-  // Inspección del primer elemento de datos para depurar estructura de celdas
-  const firstDataRow = Array.from(possibleRows).find(el => el.children.length === headerLength && el !== headerRow);
-  if (firstDataRow) {
-    console.log("FUTVRE: Estructura de la primera fila detectada:", firstDataRow.outerHTML);
-    Array.from(firstDataRow.children).forEach((cell, idx) => {
-      const selected = cell.querySelector('a, span, button');
-      console.log(`Celda ${idx} (${headersNormalized[idx]}):`, {
-        outerHTML: cell.outerHTML,
-        textContent: cell.textContent,
-        selectedTag: selected ? selected.tagName : null,
-        selectedText: selected ? selected.textContent : null
-      });
-    });
-  }
-
-  let lengthMismatch = 0;
-  let isHeader = 0;
-  let invisible = 0;
-  let userInvalid = 0;
-  let passInvalid = 0;
-  let connInvalid = 0;
-
   for (const el of possibleRows) {
     const cells = Array.from(el.children);
-    if (cells.length !== headerLength) {
-      lengthMismatch++;
-      continue;
-    }
-    if (el === headerRow || el.textContent.includes('Contraseña') && el.textContent.includes('Caducidad')) {
-      isHeader++;
-      continue;
-    }
-    if (!isElementVisible(el)) {
-      invisible++;
-      continue;
-    }
+    if (cells.length !== headerLength) continue;
+    if (el === headerRow || el.textContent.includes('Contraseña') && el.textContent.includes('Caducidad')) continue;
+    if (!isElementVisible(el)) continue;
 
     const userVal = getCellText(cells[userIndex]);
-    if (!userVal || userVal.includes(' ') || userVal.length > 30 || normalizeText(userVal) === 'nombredeusuario') {
-      userInvalid++;
-      continue;
-    }
+    if (!userVal || userVal.includes(' ') || userVal.length > 30 || normalizeText(userVal) === 'nombredeusuario') continue;
 
     const passVal = getCellText(cells[passIndex]);
-    if (!passVal || passVal.includes(' ')) {
-      passInvalid++;
-      continue;
-    }
+    if (!passVal || passVal.includes(' ')) continue;
 
     // Validación extra: verificar formato de conexiones (e.g., "0/2")
     if (connectionsIndex !== -1) {
       const connVal = getCellText(cells[connectionsIndex]);
-      if (!connVal || !connVal.includes('/')) {
-        connInvalid++;
-        continue;
-      }
+      if (!connVal || !connVal.includes('/')) continue;
     }
 
     rows.push(el);
   }
-
-  console.log("FUTVRE scraping stats:", {
-    headerTagName: headerRow.tagName,
-    headerLength,
-    possibleRowsCount: possibleRows.length,
-    lengthMismatch,
-    isHeader,
-    invisible,
-    userInvalid,
-    passInvalid,
-    connInvalid,
-    matchedRowsCount: rows.length
-  });
 
   const users = [];
   for (const row of rows) {
