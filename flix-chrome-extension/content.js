@@ -171,6 +171,21 @@ function scrapeFutvreUsers() {
   const possibleRows = container.querySelectorAll(headerRow.tagName.toLowerCase());
   const rows = [];
 
+  // Inspección del primer elemento de datos para depurar estructura de celdas
+  const firstDataRow = Array.from(possibleRows).find(el => el.children.length === headerLength && el !== headerRow);
+  if (firstDataRow) {
+    console.log("FUTVRE: Estructura de la primera fila detectada:", firstDataRow.outerHTML);
+    Array.from(firstDataRow.children).forEach((cell, idx) => {
+      const selected = cell.querySelector('a, span, button');
+      console.log(`Celda ${idx} (${headersNormalized[idx]}):`, {
+        outerHTML: cell.outerHTML,
+        textContent: cell.textContent,
+        selectedTag: selected ? selected.tagName : null,
+        selectedText: selected ? selected.textContent : null
+      });
+    });
+  }
+
   let lengthMismatch = 0;
   let isHeader = 0;
   let invisible = 0;
