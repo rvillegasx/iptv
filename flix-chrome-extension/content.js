@@ -1,28 +1,48 @@
 // Content script para extraer y sincronizar los usuarios del panel de FLIX
 
+// Helper para normalizar texto (quitar acentos, pasar a minúsculas, limpiar espacios)
+function normalizeText(str) {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Quita acentos
+    .replace(/[^a-z0-9]/g, "") // Quita caracteres especiales como #, ., etc.
+    .trim();
+}
+
 // Función para buscar e identificar la tabla de FLIX basada en cabeceras
 function scrapeFlixUsers() {
   const tables = document.querySelectorAll('table');
   for (const table of tables) {
-    const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
-    
+    // Buscar en th y td de la cabecera (primera fila, thead, etc.)
+    const headerCells = table.querySelectorAll('th, tr:first-child td, thead td');
+    const headers = Array.from(headerCells).map(cell => cell.textContent.trim());
+    const headersNormalized = headers.map(normalizeText);
+
     // Validar si es la tabla correcta buscando cabeceras representativas
-    if (headers.includes('Código') && headers.includes('Vencimiento')) {
+    const hasCodigo = headersNormalized.some(h => h.includes('codigo'));
+    const hasVencimiento = headersNormalized.some(h => h.includes('vencimiento'));
+
+    if (hasCodigo && hasVencimiento) {
       const rows = table.querySelectorAll('tbody tr, tr:not(:first-child)');
       const users = [];
 
-      // Mapear los índices dinámicamente para soportar cambios de posición
-      const codeIndex = headers.indexOf('Código');
-      const nameIndex = headers.indexOf('Nombre');
-      const emailIndex = headers.indexOf('Correo');
-      const macIndex = headers.indexOf('Serie');
-      const connectionsIndex = headers.indexOf('#Eq.');
-      const activationIndex = headers.indexOf('Fecha Alta');
-      const expirationIndex = headers.indexOf('Vencimiento');
+      // Mapear los índices dinámicamente usando coincidencia parcial
+      const codeIndex = headersNormalized.findIndex(h => h.includes('codigo'));
+      const nameIndex = headersNormalized.findIndex(h => h.includes('nombre'));
+      const emailIndex = headersNormalized.findIndex(h => h.includes('correo') || h.includes('mail'));
+      const macIndex = headersNormalized.findIndex(h => h.includes('serie') || h.includes('mac'));
+      const connectionsIndex = headersNormalized.findIndex(h => h.includes('eq') || h.includes('conex'));
+      const activationIndex = headersNormalized.findIndex(h => h.includes('alta') || h.includes('registro') || h.includes('creado'));
+      const expirationIndex = headersNormalized.findIndex(h => h.includes('vencimiento') || h.includes('caducidad'));
 
       for (const row of rows) {
         const cells = row.querySelectorAll('td');
         if (cells.length < headers.length) continue;
+
+        // Saltar si la fila es de cabecera
+        if (row.querySelector('th')) continue;
 
         const getCellText = (cell) => {
           if (!cell) return null;
@@ -32,7 +52,7 @@ function scrapeFlixUsers() {
         };
 
         const username = getCellText(cells[codeIndex]);
-        if (!username) continue; // El código del usuario es obligatorio
+        if (!username || normalizeText(username) === 'codigo') continue; // Evitar cabecera duplicada
 
         const expiration_date = getCellText(cells[expirationIndex]);
         const name = nameIndex !== -1 ? getCellText(cells[nameIndex]) : null;
@@ -62,7 +82,6 @@ function scrapeFlixUsers() {
 function initExtensionWidget() {
   const users = scrapeFlixUsers();
   if (users.length === 0) {
-    console.log('FLIX IPTV Exporter: No se detectó la tabla de usuarios en esta página.');
     return;
   }
 
@@ -79,7 +98,7 @@ function initExtensionWidget() {
     top: '20px',
     right: '20px',
     zIndex: '999999',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
     backdropFilter: 'blur(8px)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
     borderRadius: '12px',
@@ -213,21 +232,29 @@ function initExtensionWidget() {
   });
 }
 
-// Ejecutar cuando se carga completamente la página y cuando hay cambios en el DOM
-// (para paneles dinámicos que tardan en renderizar las tablas o usan navegación SPA)
-window.addEventListener('load', () => {
-  setTimeout(initExtensionWidget, 1000);
-});
-
-// Observar mutaciones del DOM para re-inyectar si la tabla se carga de manera diferida
-const observer = new MutationObserver((mutations) => {
+// Iniciar monitoreo del DOM
+function observeDOM() {
   const table = document.querySelector('table');
   if (table) {
     initExtensionWidget();
   }
-});
 
-observer.observe(document.body, {
-  childList: true,
-  subtree: true
-});
+  const observer = new MutationObserver(() => {
+    const table = document.querySelector('table');
+    if (table) {
+      initExtensionWidget();
+    }
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+}
+
+// Ejecutar cuando esté listo
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', observeDOM);
+} else {
+  observeDOM();
+}
