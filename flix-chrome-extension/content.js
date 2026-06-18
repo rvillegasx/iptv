@@ -14,6 +14,11 @@ function normalizeText(str) {
     .trim();
 }
 
+// Helper para comprobar si un elemento es visible en el DOM
+function isElementVisible(el) {
+  return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+}
+
 // --- PARSER FLIX ---
 function scrapeFlixUsers() {
   const allElements = document.querySelectorAll('div, tr, thead, ul, header, section');
@@ -50,7 +55,12 @@ function scrapeFlixUsers() {
   const expirationIndex = headersNormalized.findIndex(h => h.includes('vencimiento') || h.includes('caducidad'));
 
   const headerLength = headersNormalized.length;
-  const possibleRows = document.querySelectorAll('div, tr, li');
+  
+  let container = headerRow.parentElement;
+  if (headerRow.tagName === 'TR') {
+    container = headerRow.closest('table') || headerRow.parentElement;
+  }
+  const possibleRows = container.querySelectorAll(headerRow.tagName.toLowerCase());
   const rows = [];
   const dateRegex = /^\d{4}-\d{2}-\d{2}/;
 
@@ -58,6 +68,7 @@ function scrapeFlixUsers() {
     const cells = Array.from(el.children);
     if (cells.length !== headerLength) continue;
     if (el === headerRow || el.textContent.includes('Vencimiento') && el.textContent.includes('Código')) continue;
+    if (!isElementVisible(el)) continue;
 
     const getCellText = (cell) => {
       if (!cell) return '';
@@ -149,13 +160,19 @@ function scrapeFutvreUsers() {
   const notesIndex = headersNormalized.findIndex(h => h === 'n' || h.includes('nota'));
 
   const headerLength = headersNormalized.length;
-  const possibleRows = document.querySelectorAll('div, tr, li');
+  
+  let container = headerRow.parentElement;
+  if (headerRow.tagName === 'TR') {
+    container = headerRow.closest('table') || headerRow.parentElement;
+  }
+  const possibleRows = container.querySelectorAll(headerRow.tagName.toLowerCase());
   const rows = [];
 
   for (const el of possibleRows) {
     const cells = Array.from(el.children);
     if (cells.length !== headerLength) continue;
     if (el === headerRow || el.textContent.includes('Contraseña') && el.textContent.includes('Caducidad')) continue;
+    if (!isElementVisible(el)) continue;
 
     const getCellText = (cell) => {
       if (!cell) return '';
@@ -168,6 +185,12 @@ function scrapeFutvreUsers() {
 
     const passVal = getCellText(cells[passIndex]);
     if (!passVal || passVal.includes(' ')) continue;
+
+    // Validación extra: verificar formato de conexiones (e.g., "0/2")
+    if (connectionsIndex !== -1) {
+      const connVal = getCellText(cells[connectionsIndex]);
+      if (!connVal || !connVal.includes('/')) continue;
+    }
 
     rows.push(el);
   }
@@ -261,6 +284,10 @@ function initExtensionWidget() {
   // Prevenir inyecciones duplicadas
   const existingWidget = document.getElementById('flix-sync-widget');
   if (existingWidget) {
+    const isFutvre = (platform === 'FUTVRE');
+    existingWidget.style.left = isFutvre ? '20px' : 'auto';
+    existingWidget.style.right = isFutvre ? 'auto' : '20px';
+
     const countBadge = document.querySelector('#flix-sync-widget span');
     const expectedText = `${users.length} filas`;
     if (countBadge && countBadge.textContent !== expectedText) {
@@ -279,10 +306,12 @@ function initExtensionWidget() {
   // Crear contenedor del widget flotante
   const widget = document.createElement('div');
   widget.id = 'flix-sync-widget';
+  const isFutvre = (platform === 'FUTVRE');
   Object.assign(widget.style, {
     position: 'fixed',
     bottom: '20px',
-    right: '20px',
+    left: isFutvre ? '20px' : 'auto',
+    right: isFutvre ? 'auto' : '20px',
     zIndex: '999999',
     backgroundColor: 'rgba(15, 23, 42, 0.95)',
     backdropFilter: 'blur(8px)',
