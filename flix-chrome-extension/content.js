@@ -68,12 +68,7 @@ function scrapeFlixUsers() {
   const expirationIndex = headersNormalized.findIndex(h => h.includes('vencimiento') || h.includes('caducidad'));
 
   const headerLength = headersNormalized.length;
-  
-  let container = headerRow.parentElement;
-  if (headerRow.tagName === 'TR') {
-    container = headerRow.closest('table') || headerRow.parentElement;
-  }
-  const possibleRows = container.querySelectorAll(headerRow.tagName.toLowerCase());
+  const possibleRows = document.querySelectorAll('div, tr, li');
   const rows = [];
   const dateRegex = /^\d{4}-\d{2}-\d{2}/;
 
