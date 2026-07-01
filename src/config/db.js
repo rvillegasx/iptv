@@ -46,6 +46,30 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
     console.log('Tabla iptv_users verificada con éxito.');
+
+    // Limpieza automática de registros basura históricos (sugerencia del usuario)
+    console.log('Realizando limpieza automática de registros de usuario inválidos en la base de datos...');
+    const [cleanupResult] = await connection.query(`
+      DELETE FROM iptv_users 
+      WHERE 
+        username LIKE '% %'
+        OR username LIKE '%:'
+        OR (CHAR_LENGTH(username) < 4 AND username REGEXP '^[0-9]+$')
+        OR username REGEXP '^[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}(/[0-9]{1,2})?$'
+        OR LOWER(TRIM(username)) IN (
+          'acciones', 'notas', 'registros', 'revendedor', 'revendedor:',
+          'subrevendedores', 'suscripciones', 'tickets', 'tablero',
+          'usuario', 'nombredeusuario', 'contrasena', 'caducidad', 'prohibir',
+          'paquete', 'prueba', 'conexiones', 'infodeconexion', 'ultimavista',
+          'creado', 'estado', 'opciones', 'vencimiento', 'codigo', 'serie',
+          'mac', 'correo', 'mail', 'total', 'filtrado'
+        );
+    `);
+    if (cleanupResult.affectedRows > 0) {
+      console.log(`Limpieza completada: Se eliminaron ${cleanupResult.affectedRows} registros basura.`);
+    } else {
+      console.log('No se encontraron registros basura para limpiar.');
+    }
   } catch (error) {
     console.error('Error al inicializar la base de datos:', error);
     throw error;

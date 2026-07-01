@@ -704,6 +704,72 @@ function isSimilarUsername(username1, username2) {
   return dist <= 2;
 }
 
+// Helper para verificar si un nombre de usuario es válido y no basura del scraping
+function isValidUsername(username) {
+  if (!username) return false;
+  
+  const trimmed = username.trim();
+  if (trimmed.length === 0) return false;
+
+  // 1. No debe contener espacios
+  if (trimmed.includes(' ')) return false;
+
+  // 2. No debe ser un número puro muy corto (e.g. "36", "25", "100") - contadores del panel
+  if (/^\d{1,3}$/.test(trimmed)) return false;
+
+  // 3. No debe ser una dirección IP (v4 con o sin máscara CIDR)
+  const ipRegex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d{1,2})?$/;
+  if (ipRegex.test(trimmed)) return false;
+
+  // 4. Lista negra de términos comunes de la interfaz de usuario (insensible a acentos/mayúsculas)
+  const forbiddenTerms = new Set([
+    'acciones',
+    'notas',
+    'registros',
+    'revendedor',
+    'revendedor:',
+    'subrevendedores',
+    'suscripciones',
+    'tickets',
+    'tablero',
+    'usuario',
+    'nombredeusuario',
+    'contrasena',
+    'caducidad',
+    'prohibir',
+    'paquete',
+    'prueba',
+    'conexiones',
+    'infodeconexion',
+    'ultimavista',
+    'creado',
+    'estado',
+    'opciones',
+    'vencimiento',
+    'codigo',
+    'serie',
+    'mac',
+    'correo',
+    'mail',
+    'total',
+    'filtrado'
+  ]);
+
+  const normalized = trimmed
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Quitar acentos
+    .replace(/[^a-z0-9:]/g, "");     // Mantener solo letras, números y dos puntos (por MACs)
+
+  if (forbiddenTerms.has(normalized)) return false;
+  if (forbiddenTerms.has(trimmed.toLowerCase())) return false;
+
+  // Si termina con dos puntos (e.g., "Revendedor:"), es etiqueta
+  if (trimmed.endsWith(':')) return false;
+
+  return true;
+}
+
 // --- CONTROLLER DE ACCESO PARA SYNC MASIVO (EXTENSIÓN DE CHROME / API DIRECTA) ---
 export async function bulkSyncUsers(req, res) {
   const { users } = req.body;
@@ -729,7 +795,7 @@ export async function bulkSyncUsers(req, res) {
       const finalUsername = (user.username || '').trim();
       const finalPlatform = (user.platform || '').trim();
 
-      if (!finalUsername || !finalPlatform) {
+      if (!finalUsername || !finalPlatform || !isValidUsername(finalUsername)) {
         continue;
       }
 
