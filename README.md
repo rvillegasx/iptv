@@ -303,3 +303,9 @@ Para mitigar la duplicación de usuarios cuando la API de Gemini confunde caract
    ```
 3. **Endpoint de Auditoría**: La ruta protegida `GET /api/debug-duplicates` (requiere cabecera `X-API-Key`) que devuelve los duplicados potenciales encontrados en formato JSON.
 
+### D. Validación y Limpieza de Datos Basura de Web Scraping
+Para evitar la sincronización accidental de datos inválidos (como ítems de menús laterales, direcciones IP de servidores, contadores de filas o etiquetas de cabecera de los paneles de administración), el backend implementa una protección de doble capa:
+1. **Validación en Tiempo Real (Filtro Activo)**: El endpoint `/api/users/bulk-sync` evalúa cada registro entrante. Omite automáticamente aquellos cuyo nombre de usuario contenga espacios, sea una IP (v4 con o sin CIDR), sea un número puro menor a 4 dígitos (contadores de filas de la UI), o coincida con una lista negra de palabras de interfaz (ej. `Acciones`, `Suscripciones`, `Subrevendedores`, `Tickets`, `Notas`, etc.).
+2. **Limpieza Automática al Iniciar (Database Pruning)**: Al arrancar la aplicación, el proceso de inicialización de la base de datos ejecuta una consulta DML `DELETE` que busca y purga cualquier registro basura legacy en la tabla `iptv_users` que coincida con los criterios inválidos arriba descritos. Esto garantiza que la base de datos se mantenga limpia tras despliegues en Dokploy.
+
+
