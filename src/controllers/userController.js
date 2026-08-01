@@ -50,7 +50,7 @@ export async function uploadScreenshot(req, res) {
             const finalPlatform = platform;
             
             // Si la fecha viene vacía o es inválida, se guarda como null
-            const expirationDate = user.expiration_date ? user.expiration_date : null;
+            const expirationDate = formatExpirationDate(user.expiration_date);
             const activationDate = user.activation_date ? user.activation_date : null;
 
             const rawOcr = JSON.stringify(user);
@@ -289,7 +289,7 @@ export async function uploadCSV(req, res) {
         const maxConnections = parseInt(record["Max Connections"] || '1', 10);
         
         // Expiration format: "2026-09-01 18:46" -> direct SQL datetime format
-        const expirationDate = record.Expiration || null;
+        const expirationDate = formatExpirationDate(record.Expiration);
         // Created format: "2026-06-01 18:46" -> split to date "2026-06-01"
         const activationDate = record.Created ? record.Created.split(' ')[0] : null;
         const notes = record["Reseller Notes"] || null;
@@ -405,9 +405,25 @@ export async function getUsers(req, res) {
         inSevenDays.setDate(now.getDate() + 7);
         query += ' AND expiration_date > ? AND expiration_date <= ?';
         params.push(now, inSevenDays);
+      } else if (status === 'expiring_today' || status === 'today') {
+        // Vence hoy (todo el día de hoy, independientemente de la hora)
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        const endOfToday = new Date();
+        endOfToday.setHours(23, 59, 59, 999);
+        query += ' AND expiration_date >= ? AND expiration_date <= ?';
+        params.push(startOfToday, endOfToday);
+      } else if (status === 'trials' || status === 'demo') {
+        query += ' AND is_trial = 1';
       } else if (status === 'banned') {
         query += ' AND is_banned = 1';
       }
+    }
+
+    if (req.query.is_trial !== undefined) {
+      const isTrialVal = req.query.is_trial === 'true' || req.query.is_trial === '1' || req.query.is_trial === true;
+      query += ' AND is_trial = ?';
+      params.push(isTrialVal ? 1 : 0);
     }
 
     // Obtener total para paginación
@@ -594,6 +610,11 @@ export async function getDashboardStats(req, res) {
     const inSevenDays = new Date();
     inSevenDays.setDate(now.getDate() + 7);
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
     // Queries consolidadas
     const [totalRows] = await pool.query(`
       SELECT 
@@ -626,25 +647,38 @@ export async function getDashboardStats(req, res) {
       WHERE expiration_date > ? AND expiration_date <= ? AND is_banned = 0
     `, [now, inSevenDays]);
 
+    const [expiringTodayRows] = await pool.query(`
+      SELECT 
+        COUNT(*) as total_expiring_today,
+        SUM(CASE WHEN platform = 'FLIX' THEN 1 ELSE 0 END) as flix_expiring_today,
+        SUM(CASE WHEN platform = 'FUTVRE' THEN 1 ELSE 0 END) as futvre_expiring_today
+      FROM iptv_users
+      WHERE expiration_date >= ? AND expiration_date <= ? AND is_banned = 0
+    `, [startOfToday, endOfToday]);
+
     const totals = totalRows[0];
     const active = activeRows[0];
     const expired = expiredRows[0];
+    const expiringToday = expiringTodayRows[0];
 
     return res.status(200).json({
       summary: {
         total: totals.total || 0,
         banned: totals.total_banned || 0,
-        expiringSoon: expiringSoonRows[0].expiring_soon || 0
+        expiringSoon: expiringSoonRows[0].expiring_soon || 0,
+        expiringToday: expiringToday.total_expiring_today || 0
       },
       flix: {
         total: totals.total_flix || 0,
         active: active.active_flix || 0,
-        expired: expired.expired_flix || 0
+        expired: expired.expired_flix || 0,
+        expiringToday: expiringToday.flix_expiring_today || 0
       },
       futvre: {
         total: totals.total_futvre || 0,
         active: active.active_futvre || 0,
-        expired: expired.expired_futvre || 0
+        expired: expired.expired_futvre || 0,
+        expiringToday: expiringToday.futvre_expiring_today || 0
       }
     });
 
@@ -770,6 +804,57 @@ function isValidUsername(username) {
   return true;
 }
 
+// Helper para normalizar cualquier string de fecha de expiración al formato MySQL DATETIME
+export function formatExpirationDate(dateStr) {
+  if (!dateStr) return null;
+  const str = String(dateStr).trim();
+  if (!str) return null;
+
+  // 1. DD.MM.YYYY HH:mm:ss o DD/MM/YYYY HH:mm:ss o DD-MM-YYYY HH:mm:ss
+  const dmyTimeMatch = str.match(/^(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (dmyTimeMatch) {
+    const day = dmyTimeMatch[1].padStart(2, '0');
+    const month = dmyTimeMatch[2].padStart(2, '0');
+    const year = dmyTimeMatch[3];
+    const hour = dmyTimeMatch[4].padStart(2, '0');
+    const minute = dmyTimeMatch[5].padStart(2, '0');
+    const second = dmyTimeMatch[6] ? dmyTimeMatch[6].padStart(2, '0') : '00';
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  }
+
+  // 2. DD.MM.YYYY o DD/MM/YYYY o DD-MM-YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day} 23:59:59`;
+  }
+
+  // 3. YYYY-MM-DD HH:mm:ss o YYYY-MM-DD HH:mm
+  const ymdTimeMatch = str.match(/^(\d{4})[\.\/-](\d{1,2})[\.\/-](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (ymdTimeMatch) {
+    const year = ymdTimeMatch[1];
+    const month = ymdTimeMatch[2].padStart(2, '0');
+    const day = ymdTimeMatch[3].padStart(2, '0');
+    const hour = ymdTimeMatch[4].padStart(2, '0');
+    const minute = ymdTimeMatch[5].padStart(2, '0');
+    const second = ymdTimeMatch[6] ? ymdTimeMatch[6].padStart(2, '0') : '00';
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  }
+
+  // 4. YYYY-MM-DD
+  const ymdMatch = str.match(/^(\d{4})[\.\/-](\d{1,2})[\.\/-](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day} 23:59:59`;
+  }
+
+  return str;
+}
+
 // --- CONTROLLER DE ACCESO PARA SYNC MASIVO (EXTENSIÓN DE CHROME / API DIRECTA) ---
 export async function bulkSyncUsers(req, res) {
   const { users } = req.body;
@@ -799,11 +884,7 @@ export async function bulkSyncUsers(req, res) {
         continue;
       }
 
-      // Dar formato de fin de día a la fecha si solo viene la fecha (YYYY-MM-DD)
-      let expirationDate = user.expiration_date ? String(user.expiration_date).trim() : null;
-      if (expirationDate && expirationDate.length === 10) {
-        expirationDate += ' 23:59:59';
-      }
+      const expirationDate = formatExpirationDate(user.expiration_date);
 
       const activationDate = user.activation_date ? String(user.activation_date).trim() : null;
       const rawMetadata = JSON.stringify(user);

@@ -70,7 +70,7 @@ function scrapeFlixUsers() {
   const headerLength = headersNormalized.length;
   const possibleRows = document.querySelectorAll('div, tr, li');
   const rows = [];
-  const dateRegex = /^\d{4}-\d{2}-\d{2}/;
+  const dateRegex = /^(\d{4}[-\/\.]\d{1,2}[-\/\.]\d{1,2}|\d{1,2}[-\/\.]\d{1,2}[-\/\.]\d{4})/;
 
   for (const el of possibleRows) {
     const cells = Array.from(el.children);
@@ -91,7 +91,13 @@ function scrapeFlixUsers() {
   for (const row of rows) {
     const cells = Array.from(row.children);
     const username = getCellText(cells[codeIndex]);
-    const expiration_date = getCellText(cells[expirationIndex]);
+    let expiration_date = getCellText(cells[expirationIndex]);
+    if (expiration_date) {
+      const dmyMatch = expiration_date.match(/(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})/);
+      if (dmyMatch) {
+        expiration_date = `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+      }
+    }
     const name = nameIndex !== -1 ? getCellText(cells[nameIndex]) : null;
     const email = emailIndex !== -1 ? getCellText(cells[emailIndex]) : null;
     const mac_address = macIndex !== -1 ? getCellText(cells[macIndex]) : null;
@@ -201,12 +207,31 @@ function scrapeFutvreUsers() {
     const lastSeen = lastSeenIndex !== -1 ? getCellText(cells[lastSeenIndex]) : null;
     const notes = notesIndex !== -1 ? getCellText(cells[notesIndex]) : null;
 
-    // Parsear fecha ("01.09.2026 12:46 (in 2 months)") -> YYYY-MM-DD HH:mm:ss
+    // Parsear fecha ("31.07.2026 20:27 (in 2 hours)" o "2026-07-31 20:27") -> YYYY-MM-DD HH:mm:ss
     let expiration_date = null;
     if (rawExpiration) {
-      const dateMatch = rawExpiration.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
-      if (dateMatch) {
-        expiration_date = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]} ${dateMatch[4]}:${dateMatch[5]}:00`;
+      // 1. Intentar DD.MM.YYYY HH:mm o DD/MM/YYYY HH:mm o DD-MM-YYYY HH:mm
+      const dmyMatch = rawExpiration.match(/(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (dmyMatch) {
+        const day = dmyMatch[1].padStart(2, '0');
+        const month = dmyMatch[2].padStart(2, '0');
+        const year = dmyMatch[3];
+        const hour = dmyMatch[4].padStart(2, '0');
+        const minute = dmyMatch[5].padStart(2, '0');
+        const second = dmyMatch[6] ? dmyMatch[6].padStart(2, '0') : '00';
+        expiration_date = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+      } else {
+        // 2. Intentar YYYY-MM-DD HH:mm:ss o YYYY-MM-DD HH:mm
+        const ymdMatch = rawExpiration.match(/(\d{4})[\.\/-](\d{1,2})[\.\/-](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        if (ymdMatch) {
+          const year = ymdMatch[1];
+          const month = ymdMatch[2].padStart(2, '0');
+          const day = ymdMatch[3].padStart(2, '0');
+          const hour = ymdMatch[4].padStart(2, '0');
+          const minute = ymdMatch[5].padStart(2, '0');
+          const second = ymdMatch[6] ? ymdMatch[6].padStart(2, '0') : '00';
+          expiration_date = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+        }
       }
     }
 
@@ -219,8 +244,12 @@ function scrapeFutvreUsers() {
       max_connections = parseInt(conParts[1], 10) || 1;
     }
 
-    const is_banned = normalizeText(rawBanned) === 'si' || rawBanned === '1' || rawBanned === true;
-    const is_trial = normalizeText(rawTrial) === 'si' || rawTrial === '1' || rawTrial === true;
+    const normBanned = normalizeText(rawBanned);
+    const normTrial = normalizeText(rawTrial);
+    const normPkg = normalizeText(packageName);
+
+    const is_banned = normBanned === 'si' || normBanned === 'yes' || normBanned === '1' || rawBanned === true;
+    const is_trial = normTrial === 'si' || normTrial === 'yes' || normTrial === 'y' || normTrial === '1' || rawTrial === true || normPkg.includes('demo') || normPkg.includes('prueba');
 
     users.push({
       platform: 'FUTVRE',

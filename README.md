@@ -19,6 +19,7 @@ La alimentación del sistema se realiza mediante **capturas de pantalla de los p
 
 ```text
 ├── docs/                      # Capturas de pantalla de muestra de ambos paneles
+├── flix-chrome-extension/     # Extensión de Chrome para extracción y sincronización directa de paneles FLIX/FUTVRE
 ├── src/
 │   ├── config/
 │   │   ├── db.js              # Pool de conexiones a MySQL e inicialización de tablas
@@ -117,11 +118,14 @@ Sigue estos pasos para arrancar el proyecto localmente en tu máquina:
 *   **Query Params (Opcionales):**
     *   `platform`: `'FLIX'` o `'FUTVRE'`
     *   `search`: Palabra clave para buscar por usuario, nombre, serie (MAC) o notas.
-    *   `status`: Filtra por estado de expiración:
+    *   `status`: Filtra por estado de expiración o tipo:
         *   `active`: No vencidos y no bloqueados.
         *   `expired`: Vencidos.
+        *   `expiring_today` o `today`: Vencen o vencieron en el transcurso del día de hoy (incluye demos de horas).
         *   `expiring_soon`: Vencerán dentro de los próximos 7 días.
+        *   `trials` o `demo`: Cuentas demo/prueba.
         *   `banned`: Bloqueados.
+    *   `is_trial`: `true` o `false` para filtrar específicamente demos en combinación con otros filtros.
     *   `limit`: Cantidad de registros a devolver (por defecto 20).
     *   `offset`: Salto de paginación (por defecto 0).
 
@@ -143,17 +147,52 @@ Sigue estos pasos para arrancar el proyecto localmente en tu máquina:
       "summary": {
         "total": 120,
         "banned": 3,
-        "expiringSoon": 5
+        "expiringSoon": 5,
+        "expiringToday": 2
       },
       "flix": {
         "total": 45,
         "active": 40,
-        "expired": 5
+        "expired": 5,
+        "expiringToday": 1
       },
       "futvre": {
         "total": 75,
         "active": 65,
-        "expired": 10
+        "expired": 10,
+        "expiringToday": 1
+      }
+    }
+    ```
+
+### H. Sincronización Masiva desde Extensión (Bulk Sync)
+*   **Ruta:** `POST /api/users/bulk-sync`
+*   **Body (JSON):**
+    ```json
+    {
+      "users": [
+        {
+          "platform": "FLIX",
+          "username": "usuario123",
+          "name": "Cliente Ejemplar",
+          "email": "correo@ejemplo.com",
+          "mac_address": "00:1A:2B:3C:4D:5E",
+          "max_connections": 2,
+          "activation_date": "2026-01-01",
+          "expiration_date": "2026-12-31"
+        }
+      ]
+    }
+    ```
+*   **Ejemplo de Respuesta:**
+    ```json
+    {
+      "message": "Sincronización masiva completada.",
+      "stats": {
+        "totalReceived": 1,
+        "insertedCount": 1,
+        "updatedCount": 0,
+        "errors": []
       }
     }
     ```
@@ -307,5 +346,38 @@ Para mitigar la duplicación de usuarios cuando la API de Gemini confunde caract
 Para evitar la sincronización accidental de datos inválidos (como ítems de menús laterales, direcciones IP de servidores, contadores de filas o etiquetas de cabecera de los paneles de administración), el backend implementa una protección de doble capa:
 1. **Validación en Tiempo Real (Filtro Activo)**: El endpoint `/api/users/bulk-sync` evalúa cada registro entrante. Omite automáticamente aquellos cuyo nombre de usuario contenga espacios, sea una IP (v4 con o sin CIDR), sea un número puro menor a 4 dígitos (contadores de filas de la UI), o coincida con una lista negra de palabras de interfaz (ej. `Acciones`, `Suscripciones`, `Subrevendedores`, `Tickets`, `Notas`, etc.).
 2. **Limpieza Automática al Iniciar (Database Pruning)**: Al arrancar la aplicación, el proceso de inicialización de la base de datos ejecuta una consulta DML `DELETE` que busca y purga cualquier registro basura legacy en la tabla `iptv_users` que coincida con los criterios inválidos arriba descritos. Esto garantiza que la base de datos se mantenga limpia tras despliegues en Dokploy.
+
+---
+
+## 9. Extensión de Chrome (FLIX & FUTVRE Exporter)
+
+El proyecto cuenta con una extensión de Chrome ubicada en la carpeta [`flix-chrome-extension`](file:///Users/rvillegas/development/iptv/flix-chrome-extension), la cual permite extraer usuarios en tiempo real directamente desde los paneles de administración web de **FLIX** y **FUTVRE** mediante Web Scraping y sincronizarlos automáticamente con la base de datos del backend.
+
+### A. Características Principales
+* **Detección Dinámica Multiplataforma**: Detecta automáticamente las tablas de usuarios en los paneles de **FLIX** y **FUTVRE** inspeccionando los elementos visuales del DOM.
+* **Extracción Inteligente de Datos**: Mapea dinámicamente campos como usuario/código, contraseña, revendedor/propietario, fecha de caducidad/vencimiento, conexiones activas y máximas (ej: `0/2`), paquete, estado de prohibición/bloqueo, pruebas y notas.
+* **Widget Flotante Inyectado**: Inyecta un widget discreto en la esquina de la pantalla que muestra el total de usuarios detectados en la página actual y ofrece el botón **"Sincronizar a BD"**.
+* **Integración Directa con la API**: Envía los registros escaneados al endpoint `/api/users/bulk-sync` utilizando la clave `X-API-Key` guardada.
+
+### B. Instalación en Google Chrome
+1. Abre tu navegador Google Chrome y ve a `chrome://extensions/`.
+2. Activa el **Modo de desarrollador** (*Developer mode*) en la esquina superior derecha.
+3. Haz clic en el botón **Cargar descomprimida** (*Load unpacked*).
+4. Selecciona el directorio [`flix-chrome-extension`](file:///Users/rvillegas/development/iptv/flix-chrome-extension) dentro de este repositorio.
+
+### C. Configuración Inicial (Popup)
+1. Haz clic en el icono de la extensión **FLIX IPTV Exporter** en la barra de extensiones de Chrome.
+2. Llena los campos del formulario:
+   * **URL de la API del Servidor**: La dirección del backend (ej: `http://localhost:3000` en desarrollo o `https://iptv.appsmx.tech` en producción).
+   * **API Key (X-API-Key)**: Tu clave secreta de autenticación (la configurada en `API_KEY` en tu `.env`).
+3. Presiona **Guardar**.
+4. Puedes validar la comunicación con el servidor haciendo clic en **Probar Conexión**.
+
+### D. Modo de Uso
+1. Navega al panel de administración web de **FLIX** o **FUTVRE** e inicia sesión.
+2. Ve a la vista de tabla donde se muestran los usuarios.
+3. El widget **IPTV Sync** se inyectará automáticamente en la parte inferior de la pantalla (derecha para FLIX, izquierda para FUTVRE) indicando el número de filas encontradas (ej: `45 filas`).
+4. Haz clic en **Sincronizar a BD**. El widget mostrará el progreso y desplegará un resumen visual con el resultado (usuarios recibidos, insertados y actualizados).
+
 
 
