@@ -117,7 +117,8 @@ Sigue estos pasos para arrancar el proyecto localmente en tu máquina:
 *   **Ruta:** `GET /api/users`
 *   **Query Params (Opcionales):**
     *   `platform`: `'FLIX'` o `'FUTVRE'`
-    *   `search`: Palabra clave para buscar por usuario, nombre, serie (MAC) o notas.
+    *   `search`: Palabra clave para buscar por usuario, nombre, serie (MAC), teléfono o notas.
+    *   `phone`: Filtra usuarios que coincidan con un número telefónico (búsqueda inteligente flexible).
     *   `status`: Filtra por estado de expiración o tipo:
         *   `active`: No vencidos y no bloqueados.
         *   `expired`: Vencidos.
@@ -129,17 +130,94 @@ Sigue estos pasos para arrancar el proyecto localmente en tu máquina:
     *   `limit`: Cantidad de registros a devolver (por defecto 20).
     *   `offset`: Salto de paginación (por defecto 0).
 
-### D. Obtener Detalle de Usuario
+### D. Consultar si un Teléfono Existe (Lookup de Cliente / WhatsApp / Bots)
+*   **Ruta:** `GET /api/users/by-phone/:phone`
+*   **Ejemplo:** `GET /api/users/by-phone/+525512345678` o `GET /api/users/by-phone/5512345678`
+*   **Ejemplo de Respuesta (Cliente Encontrado):**
+    ```json
+    {
+      "exists": true,
+      "is_client": true,
+      "phone_number": "+525512345678",
+      "total_accounts": 1,
+      "accounts": [
+        {
+          "id": 45,
+          "platform": "FUTVRE",
+          "username": "albertoLopez",
+          "name": "Alberto López",
+          "email": null,
+          "phone_number": "+525512345678",
+          "mac_address": null,
+          "expiration_date": "2026-08-31 23:59:59",
+          "is_trial": false,
+          "is_banned": false,
+          "package_name": "1 Mes",
+          "active_connections": 0,
+          "max_connections": 1,
+          "notes": null,
+          "status": "active"
+        }
+      ]
+    }
+    ```
+*   **Ejemplo de Respuesta (No Encontrado):**
+    ```json
+    {
+      "exists": false,
+      "is_client": false,
+      "phone_number": "+525512345678",
+      "total_accounts": 0,
+      "accounts": []
+    }
+    ```
+
+### E. Vincular Teléfono por Plataforma y Username (Desde otra App)
+*   **Ruta:** `POST /api/users/link-phone`
+*   **Body (JSON):**
+    ```json
+    {
+      "platform": "FUTVRE",
+      "username": "albertoLopez",
+      "phone_number": "+525512345678"
+    }
+    ```
+*   **Respuesta Exitosa (HTTP 200):**
+    ```json
+    {
+      "message": "Teléfono vinculado exitosamente al usuario",
+      "user": {
+        "id": 45,
+        "platform": "FUTVRE",
+        "username": "albertoLopez",
+        "name": "Alberto López",
+        "phone_number": "+525512345678",
+        "expiration_date": "2026-08-31 23:59:59",
+        "is_trial": false
+      }
+    }
+    ```
+
+### F. Actualizar Teléfono por ID
+*   **Ruta:** `PATCH /api/users/:id/phone`
+*   **Body (JSON):**
+    ```json
+    {
+      "phone_number": "+525512345678"
+    }
+    ```
+
+### G. Obtener Detalle de Usuario
 *   **Ruta:** `GET /api/users/:id`
 
-### E. Actualizar/Corregir Usuario
+### H. Actualizar/Corregir Usuario Completo
 *   **Ruta:** `PUT /api/users/:id`
-*   **Body (JSON):** Admite cualquier propiedad a modificar (nombre, correo, fecha de expiración, notas, etc.).
+*   **Body (JSON):** Admite cualquier propiedad a modificar (nombre, correo, teléfono `phone_number`, fecha de expiración, notas, etc.).
 
-### F. Eliminar Usuario
+### I. Eliminar Usuario
 *   **Ruta:** `DELETE /api/users/:id`
 
-### G. Estadísticas Consolidadas (Dashboard)
+### J. Estadísticas Consolidadas (Dashboard)
 *   **Ruta:** `GET /api/dashboard/stats`
 *   **Ejemplo de Respuesta:**
     ```json
@@ -165,7 +243,7 @@ Sigue estos pasos para arrancar el proyecto localmente en tu máquina:
     }
     ```
 
-### H. Sincronización Masiva desde Extensión (Bulk Sync)
+### K. Sincronización Masiva desde Extensión (Bulk Sync)
 *   **Ruta:** `POST /api/users/bulk-sync`
 *   **Body (JSON):**
     ```json
@@ -176,6 +254,7 @@ Sigue estos pasos para arrancar el proyecto localmente en tu máquina:
           "username": "usuario123",
           "name": "Cliente Ejemplar",
           "email": "correo@ejemplo.com",
+          "phone_number": "+525512345678",
           "mac_address": "00:1A:2B:3C:4D:5E",
           "max_connections": 2,
           "activation_date": "2026-01-01",
@@ -222,8 +301,21 @@ curl -X POST http://localhost:3000/api/upload-screenshot \
   -F "screenshots=@/Users/rvillegas/development/iptv/docs/Screenshot 2026-06-02 at 12.28.47 p.m..png"
 ```
 
-### C. Probar leer usuarios
+### C. Probar consultar si un número telefónico existe (Cliente)
+```bash
+curl -X GET http://localhost:3000/api/users/by-phone/+525512345678 \
+  -H "X-API-Key: dev-api-key-12345"
+```
 
+### D. Probar vincular un número telefónico a un usuario
+```bash
+curl -X POST http://localhost:3000/api/users/link-phone \
+  -H "X-API-Key: dev-api-key-12345" \
+  -H "Content-Type: application/json" \
+  -d '{"platform":"FUTVRE","username":"albertoLopez","phone_number":"+525512345678"}'
+```
+
+### E. Probar leer usuarios
 ```bash
 curl -X GET https://iptv.appsmx.tech/api/users \
   -H "X-API-Key: dev-api-key-12345" 

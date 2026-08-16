@@ -96,6 +96,7 @@ export async function uploadScreenshot(req, res) {
                   password = IFNULL(?, password),
                   name = IFNULL(?, name),
                   email = IFNULL(?, email),
+                  phone_number = IFNULL(?, phone_number),
                   mac_address = IFNULL(?, mac_address),
                   expiration_date = IFNULL(?, expiration_date),
                   active_connections = COALESCE(?, active_connections),
@@ -113,6 +114,7 @@ export async function uploadScreenshot(req, res) {
                 user.password || null,
                 user.name || null,
                 user.email || null,
+                user.phone_number || null,
                 finalMacAddress || null,
                 expirationDate,
                 user.active_connections !== undefined ? user.active_connections : null,
@@ -130,15 +132,16 @@ export async function uploadScreenshot(req, res) {
               // No existe, procedemos con el INSERT normal
               query = `
                 INSERT INTO iptv_users (
-                  platform, username, password, name, email, mac_address, 
+                  platform, username, password, name, email, phone_number, mac_address, 
                   expiration_date, active_connections, max_connections, 
                   package_name, is_trial, activation_date, is_banned, 
                   last_seen_info, notes, raw_ocr_metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                   password = IFNULL(VALUES(password), password),
                   name = IFNULL(VALUES(name), name),
                   email = IFNULL(VALUES(email), email),
+                  phone_number = IFNULL(VALUES(phone_number), phone_number),
                   mac_address = IFNULL(VALUES(mac_address), mac_address),
                   expiration_date = IFNULL(VALUES(expiration_date), expiration_date),
                   active_connections = IFNULL(VALUES(active_connections), active_connections),
@@ -157,6 +160,7 @@ export async function uploadScreenshot(req, res) {
                 user.password || null,
                 user.name || null,
                 user.email || null,
+                user.phone_number || null,
                 finalMacAddress || null,
                 expirationDate,
                 user.active_connections !== undefined ? user.active_connections : 0,
@@ -296,15 +300,16 @@ export async function uploadCSV(req, res) {
 
         const query = `
           INSERT INTO iptv_users (
-            platform, username, password, name, email, mac_address, 
+            platform, username, password, name, email, phone_number, mac_address, 
             expiration_date, active_connections, max_connections, 
             package_name, is_trial, activation_date, is_banned, 
             last_seen_info, notes, raw_ocr_metadata
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             password = IFNULL(VALUES(password), password),
             name = IFNULL(VALUES(name), name),
             email = IFNULL(VALUES(email), email),
+            phone_number = IFNULL(VALUES(phone_number), phone_number),
             mac_address = IFNULL(VALUES(mac_address), mac_address),
             expiration_date = IFNULL(VALUES(expiration_date), expiration_date),
             active_connections = IFNULL(VALUES(active_connections), active_connections),
@@ -326,6 +331,7 @@ export async function uploadCSV(req, res) {
           password,
           null, // name
           null, // email
+          null, // phone_number
           null, // mac_address
           expirationDate,
           0, // active_connections
@@ -384,9 +390,17 @@ export async function getUsers(req, res) {
     }
 
     if (search) {
-      query += ' AND (username LIKE ? OR name LIKE ? OR mac_address LIKE ? OR notes LIKE ?)';
+      query += ' AND (username LIKE ? OR name LIKE ? OR mac_address LIKE ? OR notes LIKE ? OR phone_number LIKE ?)';
       const searchWildcard = `%${search}%`;
-      params.push(searchWildcard, searchWildcard, searchWildcard, searchWildcard);
+      params.push(searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard);
+    }
+
+    if (req.query.phone || req.query.phone_number) {
+      const phoneParam = (req.query.phone || req.query.phone_number).trim();
+      const digitsOnly = phoneParam.replace(/\D/g, '');
+      const last10 = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+      query += ' AND (phone_number = ? OR phone_number LIKE ? OR (CHAR_LENGTH(?) >= 8 AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone_number, " ", ""), "-", ""), "+", ""), "(", ""), ")", "") LIKE ?))';
+      params.push(phoneParam, `%${phoneParam}%`, digitsOnly, `%${last10}`);
     }
 
     if (status) {
@@ -466,6 +480,169 @@ export async function getUserById(req, res) {
   }
 }
 
+// Consultar usuario/cliente por número telefónico (para integración con otras apps/bots)
+export async function getUserByPhone(req, res) {
+  const { phone } = req.params;
+  if (!phone || phone.trim() === '') {
+    return res.status(400).json({ error: 'El parámetro phone es obligatorio' });
+  }
+
+  const rawPhone = phone.trim();
+  const digitsOnly = rawPhone.replace(/\D/g, '');
+  const last10 = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+
+  try {
+    const query = `
+      SELECT * FROM iptv_users 
+      WHERE phone_number = ? 
+         OR phone_number = ?
+         OR phone_number LIKE ?
+         OR (CHAR_LENGTH(?) >= 8 AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone_number, " ", ""), "-", ""), "+", ""), "(", ""), ")", "") LIKE ?)
+      ORDER BY created_at DESC
+    `;
+    const [rows] = await pool.query(query, [
+      rawPhone,
+      `+${digitsOnly}`,
+      `%${rawPhone}%`,
+      digitsOnly,
+      `%${last10}`
+    ]);
+
+    if (rows.length === 0) {
+      return res.status(200).json({
+        exists: false,
+        is_client: false,
+        phone_number: rawPhone,
+        total_accounts: 0,
+        accounts: []
+      });
+    }
+
+    const now = new Date();
+    const accounts = rows.map(user => {
+      let status = 'active';
+      if (user.is_banned) {
+        status = 'banned';
+      } else if (user.expiration_date && new Date(user.expiration_date) < now) {
+        status = 'expired';
+      }
+
+      return {
+        id: user.id,
+        platform: user.platform,
+        username: user.username,
+        password: user.password,
+        name: user.name,
+        email: user.email,
+        phone_number: user.phone_number,
+        mac_address: user.mac_address,
+        expiration_date: user.expiration_date,
+        is_trial: !!user.is_trial,
+        is_banned: !!user.is_banned,
+        package_name: user.package_name,
+        active_connections: user.active_connections,
+        max_connections: user.max_connections,
+        notes: user.notes,
+        status: status,
+        created_at: user.created_at,
+        updated_at: user.updated_at
+      };
+    });
+
+    return res.status(200).json({
+      exists: true,
+      is_client: true,
+      phone_number: rawPhone,
+      total_accounts: accounts.length,
+      accounts: accounts
+    });
+  } catch (error) {
+    console.error('Error al consultar usuario por teléfono:', error);
+    return res.status(500).json({ error: 'Error al consultar usuario por teléfono' });
+  }
+}
+
+// Vincular teléfono por plataforma y username (sin necesidad de ID)
+export async function linkUserPhone(req, res) {
+  const { platform, username, phone_number } = req.body;
+
+  if (!platform || !username || phone_number === undefined) {
+    return res.status(400).json({ 
+      error: 'Los campos "platform", "username" y "phone_number" son obligatorios' 
+    });
+  }
+
+  const cleanPlatform = String(platform).trim().toUpperCase();
+  const cleanUsername = String(username).trim();
+  const cleanPhone = phone_number ? String(phone_number).trim() : null;
+
+  if (cleanPlatform !== 'FLIX' && cleanPlatform !== 'FUTVRE') {
+    return res.status(400).json({ error: 'La plataforma debe ser "FLIX" o "FUTVRE"' });
+  }
+
+  try {
+    const [users] = await pool.query(
+      'SELECT * FROM iptv_users WHERE platform = ? AND username = ?',
+      [cleanPlatform, cleanUsername]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ 
+        error: `No se encontró el usuario con plataforma "${cleanPlatform}" y nombre de usuario "${cleanUsername}"` 
+      });
+    }
+
+    const user = users[0];
+    await pool.query('UPDATE iptv_users SET phone_number = ? WHERE id = ?', [cleanPhone, user.id]);
+
+    return res.status(200).json({
+      message: 'Teléfono vinculado exitosamente al usuario',
+      user: {
+        id: user.id,
+        platform: user.platform,
+        username: user.username,
+        name: user.name,
+        phone_number: cleanPhone,
+        expiration_date: user.expiration_date,
+        is_trial: !!user.is_trial
+      }
+    });
+  } catch (error) {
+    console.error('Error al vincular teléfono con usuario:', error);
+    return res.status(500).json({ error: 'Error al vincular el número telefónico' });
+  }
+}
+
+// Actualizar teléfono por ID
+export async function updateUserPhone(req, res) {
+  const { id } = req.params;
+  const { phone_number } = req.body;
+
+  if (phone_number === undefined) {
+    return res.status(400).json({ error: 'Debes enviar el campo "phone_number"' });
+  }
+
+  const cleanPhone = phone_number ? String(phone_number).trim() : null;
+
+  try {
+    const [check] = await pool.query('SELECT id, platform, username FROM iptv_users WHERE id = ?', [id]);
+    if (check.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    await pool.query('UPDATE iptv_users SET phone_number = ? WHERE id = ?', [cleanPhone, id]);
+
+    return res.status(200).json({
+      message: 'Número telefónico actualizado correctamente',
+      id: parseInt(id, 10),
+      phone_number: cleanPhone
+    });
+  } catch (error) {
+    console.error('Error al actualizar teléfono de usuario:', error);
+    return res.status(500).json({ error: 'Error al actualizar el número telefónico' });
+  }
+}
+
 export async function updateUser(req, res) {
   const { id } = req.params;
   const {
@@ -473,6 +650,7 @@ export async function updateUser(req, res) {
     password,
     name,
     email,
+    phone_number,
     mac_address,
     expiration_date,
     active_connections,
@@ -497,6 +675,7 @@ export async function updateUser(req, res) {
         password = ?,
         name = ?,
         email = ?,
+        phone_number = ?,
         mac_address = ?,
         expiration_date = ?,
         active_connections = COALESCE(?, active_connections),
@@ -517,6 +696,7 @@ export async function updateUser(req, res) {
       password || null,
       name || null,
       email || null,
+      phone_number !== undefined ? (phone_number ? String(phone_number).trim() : null) : check[0].phone_number || null,
       mac_address || null,
       expDate,
       active_connections !== undefined ? parseInt(active_connections, 10) : null,
@@ -891,15 +1071,16 @@ export async function bulkSyncUsers(req, res) {
 
       const query = `
         INSERT INTO iptv_users (
-          platform, username, password, name, email, mac_address, 
+          platform, username, password, name, email, phone_number, mac_address, 
           expiration_date, active_connections, max_connections, 
           package_name, is_trial, activation_date, is_banned, 
           last_seen_info, notes, raw_ocr_metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           password = IFNULL(VALUES(password), password),
           name = IFNULL(VALUES(name), name),
           email = IFNULL(VALUES(email), email),
+          phone_number = IFNULL(VALUES(phone_number), phone_number),
           mac_address = IFNULL(VALUES(mac_address), mac_address),
           expiration_date = IFNULL(VALUES(expiration_date), expiration_date),
           active_connections = IFNULL(VALUES(active_connections), active_connections),
@@ -919,6 +1100,7 @@ export async function bulkSyncUsers(req, res) {
         user.password || null,
         user.name || null,
         user.email || null,
+        user.phone_number || null,
         user.mac_address || null,
         expirationDate,
         user.active_connections !== undefined ? parseInt(user.active_connections, 10) : 0,

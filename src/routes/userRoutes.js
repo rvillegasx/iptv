@@ -6,6 +6,9 @@ import {
   uploadCSV,
   getUsers,
   getUserById,
+  getUserByPhone,
+  linkUserPhone,
+  updateUserPhone,
   updateUser,
   deleteUser,
   getDashboardStats,
@@ -84,9 +87,12 @@ router.post('/upload-screenshot', upload.array('screenshots', 10), uploadScreens
 router.post('/upload-csv', uploadCsvMulter.single('csv'), uploadCSV);
 
 
-// CRUD de usuarios
+// CRUD y consultas de usuarios
 router.get('/users', getUsers);
 router.post('/users/bulk-sync', bulkSyncUsers);
+router.get('/users/by-phone/:phone', getUserByPhone);
+router.post('/users/link-phone', linkUserPhone);
+router.patch('/users/:id/phone', updateUserPhone);
 router.get('/users/:id', getUserById);
 router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);

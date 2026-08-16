@@ -29,6 +29,7 @@ export async function initializeDatabase() {
         \`password\` VARCHAR(100) DEFAULT NULL,
         \`name\` VARCHAR(150) DEFAULT NULL,
         \`email\` VARCHAR(150) DEFAULT NULL,
+        \`phone_number\` VARCHAR(50) DEFAULT NULL,
         \`mac_address\` VARCHAR(255) DEFAULT NULL,
         \`expiration_date\` DATETIME DEFAULT NULL,
         \`active_connections\` INT DEFAULT 0,
@@ -42,10 +43,23 @@ export async function initializeDatabase() {
         \`raw_ocr_metadata\` JSON DEFAULT NULL,
         \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY \`idx_platform_username\` (\`platform\`, \`username\`)
+        UNIQUE KEY \`idx_platform_username\` (\`platform\`, \`username\`),
+        KEY \`idx_phone_number\` (\`phone_number\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
     console.log('Tabla iptv_users verificada con éxito.');
+
+    // Auto-migración: Comprobar si la columna phone_number existe (para bases de datos ya creadas)
+    const [columns] = await connection.query(`SHOW COLUMNS FROM \`iptv_users\` LIKE 'phone_number'`);
+    if (columns.length === 0) {
+      console.log('Agregando columna phone_number a la tabla iptv_users...');
+      await connection.query(`
+        ALTER TABLE \`iptv_users\` 
+        ADD COLUMN \`phone_number\` VARCHAR(50) DEFAULT NULL AFTER \`email\`,
+        ADD INDEX \`idx_phone_number\` (\`phone_number\`)
+      `);
+      console.log('Columna phone_number y su índice agregados correctamente.');
+    }
 
     // Limpieza automática de registros basura históricos (sugerencia del usuario)
     console.log('Realizando limpieza automática de registros de usuario inválidos en la base de datos...');
