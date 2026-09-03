@@ -32,6 +32,53 @@ function getCellText(cell) {
   return clone.textContent.trim();
 }
 
+// Helper para extraer número de teléfono desde las notas del panel
+function extractPhoneFromNotes(notes) {
+  if (!notes) return null;
+  const str = String(notes).trim();
+  if (!str) return null;
+
+  // Limpiar etiquetas comunes de la interfaz como "Revendedor:" o "Reseller:"
+  const cleaned = str.replace(/revendedor\s*:\s*/gi, '').replace(/reseller\s*:\s*/gi, '').trim();
+  if (/^(no note|sin notas?|none|n\/a|-)$/i.test(cleaned)) {
+    return null;
+  }
+
+  // 1. Si viene con formato internacional (+52, +1, etc.)
+  const intlMatch = cleaned.match(/\+(\d{1,3})[\s.-]?\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})/);
+  if (intlMatch) {
+    return `+${intlMatch[1]}${intlMatch[2]}${intlMatch[3]}${intlMatch[4]}`;
+  }
+
+  // 2. Si viene con prefijo 52 al inicio y 10 dígitos (ej: 52 55 1234 5678)
+  const mx52Match = cleaned.match(/\b52[\s.-]?\(?(\d{2,3})\)?[\s.-]?(\d{3,4})[\s.-]?(\d{4})\b/);
+  if (mx52Match) {
+    const raw = cleaned.replace(/\D/g, '');
+    if (raw.length === 12 && raw.startsWith('52')) {
+      return `+${raw}`;
+    }
+  }
+
+  // 3. Buscar 10 dígitos locales (ej: 5512345678, 55 1234 5678, 55-1234-5678)
+  const localMatch = cleaned.match(/(?:^|\D)(\d{2,3})[\s.-]?\(?(\d{3,4})\)?[\s.-]?(\d{4})(?:$|\D)/);
+  if (localMatch) {
+    const combined = `${localMatch[1]}${localMatch[2]}${localMatch[3]}`;
+    if (combined.length === 10) {
+      return `+52${combined}`;
+    }
+  }
+
+  // 4. Si los dígitos puros extraídos son exactamente 10
+  const digitsOnly = cleaned.replace(/\D/g, '');
+  if (digitsOnly.length === 10) {
+    return `+52${digitsOnly}`;
+  } else if (digitsOnly.length === 12 && digitsOnly.startsWith('52')) {
+    return `+${digitsOnly}`;
+  }
+
+  return null;
+}
+
 // --- PARSER FLIX ---
 function scrapeFlixUsers() {
   const allElements = document.querySelectorAll('div, tr, thead, ul, header, section');
@@ -262,6 +309,7 @@ function scrapeFutvreUsers() {
       password,
       name: reseller,
       email: null,
+      phone_number: extractPhoneFromNotes(notes),
       mac_address: null,
       expiration_date,
       active_connections,
