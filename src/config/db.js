@@ -84,6 +84,21 @@ export async function initializeDatabase() {
     } else {
       console.log('No se encontraron registros basura para limpiar.');
     }
+
+    // Limpieza automática de cuentas demo/prueba (solo mantener clientes reales)
+    console.log('Realizando limpieza automática de cuentas demo/prueba en la base de datos...');
+    const [demoCleanupResult] = await connection.query(`
+      DELETE FROM iptv_users 
+      WHERE is_trial = 1 
+         OR is_trial = TRUE 
+         OR LOWER(package_name) LIKE '%demo%' 
+         OR LOWER(package_name) LIKE '%prueba%';
+    `);
+    if (demoCleanupResult.affectedRows > 0) {
+      console.log(`Limpieza de demos completada: Se eliminaron ${demoCleanupResult.affectedRows} cuentas demo.`);
+    } else {
+      console.log('No se encontraron cuentas demo para limpiar.');
+    }
   } catch (error) {
     console.error('Error al inicializar la base de datos:', error);
     throw error;

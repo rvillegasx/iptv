@@ -47,6 +47,10 @@ export async function uploadScreenshot(req, res) {
             const finalUsername = (user.username || '').trim();
             if (!finalUsername) continue;
 
+            // Descartar demos/pruebas: solo sincronizar clientes reales
+            const isTrialUser = user.is_trial === true || String(user.package_name || '').toLowerCase().includes('demo') || String(user.package_name || '').toLowerCase().includes('prueba');
+            if (isTrialUser) continue;
+
             const finalPlatform = platform;
             
             // Si la fecha viene vacía o es inválida, se guarda como null
@@ -290,6 +294,10 @@ export async function uploadCSV(req, res) {
         const password = record.Password || null;
         const isBanned = record.Banned === '1' || record.Banned === 1 || String(record.Banned).toLowerCase() === 'true';
         const isTrial = record.Trial === '1' || record.Trial === 1 || String(record.Trial).toLowerCase() === 'true';
+        const isDemoPackage = String(record.Package || record["Package Name"] || '').toLowerCase().includes('demo') || String(record.Package || record["Package Name"] || '').toLowerCase().includes('prueba');
+        
+        // Descartar demos/pruebas: solo sincronizar clientes reales
+        if (isTrial || isDemoPackage) continue;
         const maxConnections = parseInt(record["Max Connections"] || '1', 10);
         
         // Expiration format: "2026-09-01 18:46" -> direct SQL datetime format
@@ -1064,6 +1072,14 @@ export async function bulkSyncUsers(req, res) {
         continue;
       }
 
+      // Descartar demos/pruebas: solo sincronizar clientes reales
+      const isTrialUser = user.is_trial === true || user.is_trial === 1 || String(user.is_trial).toLowerCase() === 'true' ||
+                          String(user.package_name || '').toLowerCase().includes('demo') ||
+                          String(user.package_name || '').toLowerCase().includes('prueba');
+      if (isTrialUser) {
+        continue;
+      }
+
       const expirationDate = formatExpirationDate(user.expiration_date);
 
       const activationDate = user.activation_date ? String(user.activation_date).trim() : null;
@@ -1138,5 +1154,26 @@ export async function bulkSyncUsers(req, res) {
     if (connection) {
       connection.release();
     }
+  }
+}
+
+// Controller para purgar/limpiar todos los demos existentes en la base de datos
+export async function cleanupTrials(req, res) {
+  try {
+    const [result] = await pool.query(`
+      DELETE FROM iptv_users 
+      WHERE is_trial = 1 
+         OR is_trial = TRUE 
+         OR LOWER(package_name) LIKE '%demo%' 
+         OR LOWER(package_name) LIKE '%prueba%'
+    `);
+
+    return res.status(200).json({
+      message: 'Limpieza de cuentas demo/prueba completada con éxito.',
+      deletedCount: result.affectedRows
+    });
+  } catch (error) {
+    console.error('Error al limpiar demos:', error);
+    return res.status(500).json({ error: 'Error al limpiar cuentas demo de la base de datos' });
   }
 }

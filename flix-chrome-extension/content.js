@@ -251,6 +251,11 @@ function scrapeFutvreUsers() {
     const is_banned = normBanned === 'si' || normBanned === 'yes' || normBanned === '1' || rawBanned === true;
     const is_trial = normTrial === 'si' || normTrial === 'yes' || normTrial === 'y' || normTrial === '1' || rawTrial === true || normPkg.includes('demo') || normPkg.includes('prueba');
 
+    // Descartar demos/pruebas: solo sincronizar clientes reales
+    if (is_trial) {
+      continue;
+    }
+
     users.push({
       platform: 'FUTVRE',
       username,
@@ -262,7 +267,7 @@ function scrapeFutvreUsers() {
       active_connections,
       max_connections,
       package_name: packageName,
-      is_trial,
+      is_trial: false,
       activation_date: null,
       is_banned,
       last_seen_info: lastSeen,

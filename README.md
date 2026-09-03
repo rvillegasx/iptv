@@ -217,7 +217,17 @@ Sigue estos pasos para arrancar el proyecto localmente en tu máquina:
 ### I. Eliminar Usuario
 *   **Ruta:** `DELETE /api/users/:id`
 
-### J. Estadísticas Consolidadas (Dashboard)
+### J. Purgar Cuentas Demo/Prueba
+*   **Ruta:** `POST /api/users/cleanup-trials` o `DELETE /api/users/cleanup-trials`
+*   **Ejemplo de Respuesta:**
+    ```json
+    {
+      "message": "Limpieza de cuentas demo/prueba completada con éxito.",
+      "deletedCount": 42
+    }
+    ```
+
+### K. Estadísticas Consolidadas (Dashboard)
 *   **Ruta:** `GET /api/dashboard/stats`
 *   **Ejemplo de Respuesta:**
     ```json
@@ -243,7 +253,7 @@ Sigue estos pasos para arrancar el proyecto localmente en tu máquina:
     }
     ```
 
-### K. Sincronización Masiva desde Extensión (Bulk Sync)
+### L. Sincronización Masiva desde Extensión (Bulk Sync)
 *   **Ruta:** `POST /api/users/bulk-sync`
 *   **Body (JSON):**
     ```json

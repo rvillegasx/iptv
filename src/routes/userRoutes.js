@@ -13,7 +13,8 @@ import {
   deleteUser,
   getDashboardStats,
   getDuplicatesDebug,
-  bulkSyncUsers
+  bulkSyncUsers,
+  cleanupTrials
 } from '../controllers/userController.js';
 
 dotenv.config();
@@ -90,6 +91,8 @@ router.post('/upload-csv', uploadCsvMulter.single('csv'), uploadCSV);
 // CRUD y consultas de usuarios
 router.get('/users', getUsers);
 router.post('/users/bulk-sync', bulkSyncUsers);
+router.post('/users/cleanup-trials', cleanupTrials);
+router.delete('/users/cleanup-trials', cleanupTrials);
 router.get('/users/by-phone/:phone', getUserByPhone);
 router.post('/users/link-phone', linkUserPhone);
 router.patch('/users/:id/phone', updateUserPhone);

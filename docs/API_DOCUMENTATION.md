@@ -165,6 +165,21 @@ Asocia un número de teléfono a un usuario conociendo su plataforma (`FLIX` o `
 
 ---
 
+### E. Purgar Cuentas Demo/Prueba
+Elimina manualmente todos los registros de demostración existentes en la base de datos (también se ejecuta automáticamente al reiniciar el servidor).
+
+* **Método:** `POST` o `DELETE`
+* **Ruta:** `/api/users/cleanup-trials`
+* **Respuesta Exitosa (HTTP 200):**
+```json
+{
+  "message": "Limpieza de cuentas demo/prueba completada con éxito.",
+  "deletedCount": 42
+}
+```
+
+---
+
 ## 4. 📊 Estadísticas del Dashboard
 
 * **Método:** `GET`
