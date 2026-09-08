@@ -820,16 +820,16 @@ export async function getDashboardStats(req, res) {
         SUM(CASE WHEN platform = 'FLIX' THEN 1 ELSE 0 END) as active_flix,
         SUM(CASE WHEN platform = 'FUTVRE' THEN 1 ELSE 0 END) as active_futvre
       FROM iptv_users
-      WHERE (expiration_date IS NULL OR expiration_date > ?) AND is_banned = 0
-    `, [now]);
+      WHERE (expiration_date IS NULL OR expiration_date >= ?) AND is_banned = 0
+    `, [startOfToday]);
 
     const [expiredRows] = await pool.query(`
       SELECT 
         SUM(CASE WHEN platform = 'FLIX' THEN 1 ELSE 0 END) as expired_flix,
         SUM(CASE WHEN platform = 'FUTVRE' THEN 1 ELSE 0 END) as expired_futvre
       FROM iptv_users
-      WHERE expiration_date <= ?
-    `, [now]);
+      WHERE expiration_date < ?
+    `, [startOfToday]);
 
     const [expiringSoonRows] = await pool.query(`
       SELECT COUNT(*) as expiring_soon
@@ -859,22 +859,67 @@ export async function getDashboardStats(req, res) {
         expiringToday: expiringToday.total_expiring_today || 0
       },
       flix: {
-        total: totals.total_flix || 0,
-        active: active.active_flix || 0,
-        expired: expired.expired_flix || 0,
-        expiringToday: expiringToday.flix_expiring_today || 0
+        total: parseInt(totals.total_flix, 10) || 0,
+        active: parseInt(active.active_flix, 10) || 0,
+        expired: parseInt(expired.expired_flix, 10) || 0,
+        expiringToday: parseInt(expiringToday.flix_expiring_today, 10) || 0
       },
       futvre: {
-        total: totals.total_futvre || 0,
-        active: active.active_futvre || 0,
-        expired: expired.expired_futvre || 0,
-        expiringToday: expiringToday.futvre_expiring_today || 0
+        total: parseInt(totals.total_futvre, 10) || 0,
+        active: parseInt(active.active_futvre, 10) || 0,
+        expired: parseInt(expired.expired_futvre, 10) || 0,
+        expiringToday: parseInt(expiringToday.futvre_expiring_today, 10) || 0
       }
     });
 
   } catch (error) {
     console.error('Error al obtener estadísticas del dashboard:', error);
     return res.status(500).json({ error: 'Error al consultar las estadísticas' });
+  }
+}
+
+// --- CONTROLLER DE SUSCRIPCIONES ACTIVAS (PARA FLUTTER / APIS EXTERNAS) ---
+
+export async function getActiveSubscriptions(req, res) {
+  try {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const [rows] = await pool.query(`
+      SELECT 
+        SUM(CASE WHEN platform = 'FLIX' THEN 1 ELSE 0 END) as flix_active,
+        SUM(CASE WHEN platform = 'FUTVRE' THEN 1 ELSE 0 END) as futuretv_active,
+        COUNT(*) as total_active
+      FROM iptv_users
+      WHERE (expiration_date IS NULL OR expiration_date >= ?) 
+        AND is_banned = 0
+        AND is_trial = 0
+    `, [startOfToday]);
+
+    const stats = rows[0] || {};
+    const flixActive = parseInt(stats.flix_active, 10) || 0;
+    const futureTvActive = parseInt(stats.futuretv_active, 10) || 0;
+    const totalActive = parseInt(stats.total_active, 10) || 0;
+
+    return res.status(200).json({
+      success: true,
+      flix: flixActive,
+      futuretv: futureTvActive,
+      total: totalActive,
+      data: {
+        flix: {
+          active: flixActive
+        },
+        futuretv: {
+          active: futureTvActive
+        },
+        total_active: totalActive
+      },
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error al obtener suscripciones activas:', error);
+    return res.status(500).json({ error: 'Error al consultar las suscripciones activas' });
   }
 }
 

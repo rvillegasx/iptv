@@ -211,7 +211,52 @@ Elimina manualmente todos los registros de demostración existentes en la base d
 
 ---
 
-## 5. 🛡️ Garantía de Persistencia de Teléfonos
+## 5. 🟢 Suscripciones Activas (Flix & FutureTV)
+
+Endpoint optimizado para widgets y aplicaciones móviles (como Flutter / Nexo) que solo requieren el dato puntual de cuentas activas por plataforma.
+
+* **Método:** `GET`
+* **Rutas:** `/api/subscriptions/active` o `/api/active-subscriptions`
+* **Headers:** `X-API-Key: <tu_api_key>`
+
+#### Ejemplo de Respuesta (HTTP 200):
+```json
+{
+  "success": true,
+  "flix": 21,
+  "futuretv": 76,
+  "total": 97,
+  "data": {
+    "flix": {
+      "active": 21
+    },
+    "futuretv": {
+      "active": 76
+    },
+    "total_active": 97
+  },
+  "updated_at": "2026-09-08T17:55:00.000Z"
+}
+```
+
+#### Ejemplo de Consumo en Flutter (Dart):
+```dart
+final response = await http.get(
+  Uri.parse('${AppConfig.iptvBase}/subscriptions/active'),
+  headers: { 'X-API-Key': AppConfig.iptvApiKey },
+);
+
+if (response.statusCode == 200) {
+  final data = jsonDecode(response.body);
+  final int flixActive = data['flix'];         // ej. 21
+  final int futureTvActive = data['futuretv']; // ej. 76
+  final int totalActive = data['total'];       // ej. 97
+}
+```
+
+---
+
+## 6. 🛡️ Garantía de Persistencia de Teléfonos
 
 Cuando la **Extensión de Google Chrome**, una carga masiva de CSV o el OCR escanean y sincronizan los paneles de administración hacia la base de datos:
 * La base de datos ejecuta una regla **`phone_number = IFNULL(VALUES(phone_number), phone_number)`**.

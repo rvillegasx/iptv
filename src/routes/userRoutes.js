@@ -12,6 +12,7 @@ import {
   updateUser,
   deleteUser,
   getDashboardStats,
+  getActiveSubscriptions,
   getDuplicatesDebug,
   bulkSyncUsers,
   cleanupTrials
@@ -105,5 +106,9 @@ router.get('/debug-duplicates', getDuplicatesDebug);
 
 // Estadísticas para Flutter Dashboard
 router.get('/dashboard/stats', getDashboardStats);
+
+// Métricas de suscripciones activas (para Flutter Nexo / widgets)
+router.get('/subscriptions/active', getActiveSubscriptions);
+router.get('/active-subscriptions', getActiveSubscriptions);
 
 export default router;
