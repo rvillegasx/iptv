@@ -253,7 +253,30 @@ Sigue estos pasos para arrancar el proyecto localmente en tu máquina:
     }
     ```
 
-### L. Sincronización Masiva desde Extensión (Bulk Sync)
+### L. Cuentas y Suscripciones Activas (Para Flutter / Nexo)
+*   **Rutas:** `GET /api/subscriptions/active` o `GET /api/active-subscriptions`
+*   **Descripción:** Retorna exclusivamente las cuentas de clientes reales activos por plataforma y el total consolidado, evaluando por día calendario.
+*   **Ejemplo de Respuesta:**
+    ```json
+    {
+      "success": true,
+      "flix": 21,
+      "futuretv": 48,
+      "total": 69,
+      "data": {
+        "flix": {
+          "active": 21
+        },
+        "futuretv": {
+          "active": 48
+        },
+        "total_active": 69
+      },
+      "updated_at": "2026-09-08T18:08:31.950Z"
+    }
+    ```
+
+### M. Sincronización Masiva desde Extensión (Bulk Sync)
 *   **Ruta:** `POST /api/users/bulk-sync`
 *   **Body (JSON):**
     ```json
