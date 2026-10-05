@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { parseIPTVImage } from '../services/ocrService.js';
+import { parse as parseCSV } from 'csv-parse/sync';
 
 // --- CONTROLLER DE OCR / PROCESAMIENTO DE CAPTURAS ---
 export async function uploadScreenshot(req, res) {
@@ -234,50 +235,32 @@ export async function uploadCSV(req, res) {
   };
 
   try {
-    // 1. Parsear CSV con soporte básico de comillas
-    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
-    if (lines.length === 0) {
+    // 1. Parsear CSV con csv-parse (maneja comillas dobles, campos multilínea y BOM).
+    let records;
+    try {
+      records = parseCSV(csvText, {
+        columns: true,
+        bom: true,
+        trim: true,
+        skip_empty_lines: true,
+        relax_column_count: true,
+      });
+    } catch (parseErr) {
+      return res.status(400).json({ error: `Error al parsear el CSV: ${parseErr.message}` });
+    }
+
+    if (!records || records.length === 0) {
       return res.status(400).json({ error: 'El archivo CSV está vacío' });
     }
 
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
-    
     // Validar cabeceras mínimas para FUTVRE (panel nuevo)
+    const headers = Object.keys(records[0]);
     const requiredHeaders = ['Usuario', 'Vence'];
     const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
     if (missingHeaders.length > 0) {
-      return res.status(400).json({ 
-        error: `El CSV no tiene las cabeceras requeridas de FUTVRE: ${missingHeaders.join(', ')}` 
+      return res.status(400).json({
+        error: `El CSV no tiene las cabeceras requeridas de FUTVRE: ${missingHeaders.join(', ')}`
       });
-    }
-
-    const records = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      const row = [];
-      let insideQuote = false;
-      let entry = '';
-      
-      for (let j = 0; j < line.length; j++) {
-        const char = line[j];
-        if (char === '"' || char === "'") {
-          insideQuote = !insideQuote;
-        } else if (char === ',' && !insideQuote) {
-          row.push(entry.trim());
-          entry = '';
-        } else {
-          entry += char;
-        }
-      }
-      row.push(entry.trim());
-
-      if (row.length >= headers.length) {
-        const record = {};
-        headers.forEach((header, index) => {
-          record[header] = row[index] ? row[index].replace(/^["']|["']$/g, '') : null;
-        });
-        records.push(record);
-      }
     }
 
     // 2. Procesar e insertar en base de datos
