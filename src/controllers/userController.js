@@ -224,9 +224,10 @@ export async function uploadCSV(req, res) {
     return res.status(400).json({ error: 'Debes subir un archivo CSV' });
   }
 
-  const csvText = req.file.buffer.toString('utf-8');
+  const csvText = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, '');
   const stats = {
     totalRecords: 0,
+    skippedTrials: 0,
     insertedCount: 0,
     updatedCount: 0,
     errors: []
@@ -241,8 +242,8 @@ export async function uploadCSV(req, res) {
 
     const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
     
-    // Validar cabeceras mínimas para FUTVRE
-    const requiredHeaders = ['Username', 'Expiration'];
+    // Validar cabeceras mínimas para FUTVRE (panel nuevo)
+    const requiredHeaders = ['Usuario', 'Vence'];
     const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
     if (missingHeaders.length > 0) {
       return res.status(400).json({ 
@@ -285,28 +286,32 @@ export async function uploadCSV(req, res) {
       await connection.beginTransaction();
 
       for (const record of records) {
-        const username = (record.Username || '').trim();
+        const username = (record.Usuario || '').trim();
         if (!username) continue;
 
         stats.totalRecords++;
 
-        // Mapear campos
+        // Clasificar por "Estado" (panel nuevo): los demos se descartan, solo clientes reales.
+        const estado = String(record.Estado || '').trim().toLowerCase();
+        if (estado.startsWith('demo')) {
+          stats.skippedTrials++;
+          continue;
+        }
+
+        // Mapear campos del panel nuevo de FUTVRE.
         const platform = 'FUTVRE';
-        const password = record.Password || null;
-        const isBanned = record.Banned === '1' || record.Banned === 1 || String(record.Banned).toLowerCase() === 'true';
-        const isTrial = record.Trial === '1' || record.Trial === 1 || String(record.Trial).toLowerCase() === 'true';
-        const isDemoPackage = String(record.Package || record["Package Name"] || '').toLowerCase().includes('demo') || String(record.Package || record["Package Name"] || '').toLowerCase().includes('prueba');
-        
-        // Descartar demos/pruebas: solo sincronizar clientes reales
-        if (isTrial || isDemoPackage) continue;
-        const maxConnections = parseInt(record["Max Connections"] || '1', 10);
-        
-        // Expiration format: "2026-09-01 18:46" -> direct SQL datetime format
-        const expirationDate = formatExpirationDate(record.Expiration);
-        // Created format: "2026-06-01 18:46" -> split to date "2026-06-01"
-        const activationDate = record.Created ? record.Created.split(' ')[0] : null;
-        const notes = record["Reseller Notes"] || null;
-        const phoneNumber = extractPhoneFromNotes(notes);
+        const password = null; // el panel nuevo no exporta contraseña (Nexo solo lee conteos/estado)
+        const isBanned = false;
+        const isTrial = false;
+        const packageName = record.Paquete || null;
+        const maxConnections = parseInt(record.Conexiones || '1', 10);
+
+        // Fechas en DD/MM/YYYY HH:mm -> formatExpirationDate las normaliza a SQL datetime.
+        const expirationDate = formatExpirationDate(record.Vence);
+        const activationDate = formatExpirationDate(record.Creado)?.split(' ')[0] || null;
+        const notes = record.Notas || null;
+        // Teléfono: columna WhatsApp (demos) o Notas (activos), con caracteres invisibles que se limpian.
+        const phoneNumber = extractPhoneFromNotes(record.WhatsApp) || extractPhoneFromNotes(notes);
 
         const query = `
           INSERT INTO iptv_users (
@@ -346,7 +351,7 @@ export async function uploadCSV(req, res) {
           expirationDate,
           0, // active_connections
           maxConnections,
-          null, // package_name
+          packageName, // package_name
           isTrial,
           activationDate,
           isBanned,
